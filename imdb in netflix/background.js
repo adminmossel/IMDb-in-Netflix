@@ -1,8 +1,8 @@
 // Haalt ratings op via OMDb. Vervang fetchRating() later door een call naar je
 // eigen backend die de officiële IMDb API (AWS Data Exchange) gebruikt.
 const TTL = 7 * 24 * 60 * 60 * 1000;      // gevonden ratings: 7 dagen
-const NEG_TTL = 12 * 60 * 60 * 1000;      // "niet gevonden": 12 uur
-const PREFIX = "r3:";                     // nieuwe cache-versie (oude, foute resultaten vervallen)
+const NEG_TTL = 3 * 60 * 60 * 1000;      // "niet gevonden": 12 uur
+const PREFIX = "r4:";                     // nieuwe cache-versie (oude, foute resultaten vervallen)
 
 // ---------- titel-vergelijking: voorkomt dat een verkeerde film wordt getoond ----------
 const norm = (s) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -23,7 +23,12 @@ function sim(a, b) {
 async function omdb(params, apiKey) {
   const u = new URL("https://www.omdbapi.com/");
   u.search = new URLSearchParams({ apikey: apiKey, ...params });
-  const res = await fetch(u);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8500);
+  let res;
+  try { res = await fetch(u, { signal: controller.signal }); }
+  finally { clearTimeout(timeout); }
+  if (!res.ok) throw new Error("fetch");
   let d;
   try { d = await res.json(); } catch { throw new Error("fetch"); }
   if (d.Response === "False") {
@@ -54,14 +59,18 @@ function map(d) {
 async function suggest(title) {
   const q = norm(title).replace(/ /g, "_");
   if (!q) return [];
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4500);
   try {
-    const r = await fetch("https://v2.sg.media-imdb.com/suggestion/" + q[0] + "/" + q + ".json");
+    const r = await fetch("https://v2.sg.media-imdb.com/suggestion/" + q[0] + "/" + q + ".json", { signal: controller.signal });
+    if (!r.ok) return [];
     const d = await r.json();
     return (d.d || [])
       .filter((x) => x.id && x.id.startsWith("tt") &&
         /^(movie|tvSeries|tvMiniSeries|tvMovie|tvSpecial|tvShort|video|short)$/.test(x.qid || ""))
-      .map((x) => ({ id: x.id, title: x.l, year: x.y || null }));
+      .map((x) => ({ id: x.id, title: x.l, year: x.y || null, qid: x.qid || null }));
   } catch { return []; }
+  finally { clearTimeout(timeout); }
 }
 
 async function fetchRating(title, key, year) {
