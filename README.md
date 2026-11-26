@@ -1,6 +1,6 @@
 # IMDb ratings in Netflix
 
-<sub>Current version: **0.4.4**</sub>
+<sub>Current version: **0.5.0**</sub>
 
 A small Chrome extension that puts IMDb ratings straight onto Netflix. It also shows Rotten Tomatoes and Metascore, so you can get a quick idea of a film or series without opening three extra tabs.
 
@@ -17,6 +17,7 @@ I made this for my own Netflix browsing and kept adding the bits I wanted to see
 - Has a settings page where you can choose which scores to show, change badge size and enable debug information.
 - Tries IMDb suggestions as well as OMDb title search, which helps with some alternative and translated titles.
 - Caches results locally, so it doesn't request the same rating every time you scroll past a title.
+- Offers an optional trailer in the hover info card. It is off by default and only makes requests after a user adds a TMDb API key and enables the setting.
 
 ## A look at it
 
@@ -64,13 +65,17 @@ This is currently a Chrome extension (Manifest V3).
 
 ## One-time setup: OMDb API key
 
-The extension uses OMDb for the rating details, so you need your own API key.
+The extension uses OMDb for rating details, so you need your own API key. This remains separate from the optional TMDb trailer key.
 
 1. Get a free key at [omdbapi.com/apikey.aspx](https://www.omdbapi.com/apikey.aspx).
 2. Choose the free plan and follow the activation link in the email.
 3. Paste the key into the extension's settings page and click **Test and save**.
 
 The free plan currently offers 1,000 requests per day. Found ratings are cached for 7 days; results without a rating are retried after 3 hours. The settings page has a built-in connection and title diagnostic if something isn't showing up.
+
+## Optional trailers
+
+Trailers are disabled by default. To enable them, create a TMDb API key at [the TMDb API settings page](https://www.themoviedb.org/settings/api), add it in the extension settings, test and save it, and switch on **Optional trailers**. The extension first tries to match the verified IMDb ID to TMDb, then checks title and year. If no safe match or YouTube trailer is found, no trailer is shown. Playback is embedded from YouTube when the user clicks the trailer preview.
 
 ## Settings
 
