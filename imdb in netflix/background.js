@@ -1,7 +1,7 @@
 // Haalt ratings op via OMDb. Vervang fetchRating() later door een call naar je
 // eigen backend die de officiële IMDb API (AWS Data Exchange) gebruikt.
 const TTL = 7 * 24 * 60 * 60 * 1000;      // gevonden ratings: 7 dagen
-const NEG_TTL = 3 * 60 * 60 * 1000;      // "niet gevonden": 12 uur
+const NEG_TTL = 3 * 60 * 60 * 1000;      // "niet gevonden": 3 uur
 const PREFIX = "r4:";                     // nieuwe cache-versie (oude, foute resultaten vervallen)
 
 // ---------- titel-vergelijking: voorkomt dat een verkeerde film wordt getoond ----------
@@ -199,8 +199,8 @@ chrome.runtime.onMessage.addListener((msg, _s, send) => {
 
 chrome.runtime.onInstalled.addListener(async (d) => {
   if (d.reason === "install") chrome.runtime.openOptionsPage();
-  // oude (foute) cache van versie 0.1 opruimen
+  // Oude cacheversies opruimen; de nieuwe matcher gebruikt r4 en n2.
   const all = await chrome.storage.local.get(null);
-  const old = Object.keys(all).filter((k) => k.startsWith("r2:"));
+  const old = Object.keys(all).filter((k) => /^(r2:|r3:)/.test(k) || k.startsWith("n1:"));
   if (old.length) chrome.storage.local.remove(old);
 });
