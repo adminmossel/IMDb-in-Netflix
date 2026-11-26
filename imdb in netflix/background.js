@@ -75,40 +75,86 @@ async function suggest(title) {
 
 async function fetchRating(title, key, year) {
   const yr = parseInt(year, 10) || null;
-  const dbg = { q: title, y: yr, steps: [] };       // wordt als tooltip getoond bij "–"
-  let fallback = null;                              // gevonden titel zonder rating
+  const dbg = { q: title, y: yr, steps: [] };
+  let fallback = null;
   const done = (m) => ({ ...m, dbg });
-  const take = (m) => { if (m && m.rating != null) return m; if (m && !fallback) fallback = m; return null; };
+  const take = (m) => {
+    if (m && m.rating != null) return m;
+    if (m && m.id && !fallback) fallback = m;
+    return null;
+  };
   const byId = async (id) => {
     const d = await omdb({ i: id, plot: "short" }, key);
     dbg.steps.push("i=" + id + ":" + (d.Response === "True" ? d.imdbRating : d.Error));
     return d.Response === "True" ? map(d) : null;
   };
 
-  // 1. IMDb-suggesties (kennen ook Engelse/alternatieve titels van niet-Engelse producties)
-  const sug = await suggest(title);
+  const [sug, direct] = await Promise.all([
+    suggest(title),
+    omdb({ t: title, ...(yr ? { y: yr } : {}), plot: "short" }, key)
+      .catch((e) => {
+        if (["bad-key", "limit"].includes(e && e.message)) throw e;
+        dbg.steps.push("t-fout:" + (e && e.message || "onbekend"));
+        return null;
+      })
+  ]);
   dbg.steps.push("suggesties:" + sug.length);
-  // Titel telt zwaarst, jaar geeft een bonus. Alleen op jaar passen we toe voor titels waarvan
-  // de naam afwijkt (bv. Engelse Netflix-titel van een Nederlandse serie). Een fout jaar blokkeert dus niets.
+
+  if (direct) {
+    dbg.steps.push("t:" + (direct.Response === "True" ? direct.Title + "(" + direct.imdbRating + ")" : direct.Error));
+    if (direct.Response === "True" && sim(direct.Title, title) >= 0.6) {
+      const m = take(map(direct));
+      if (m) return done(m);
+    }
+    if (direct.Response === "True" && sim(direct.Title, title) >= 0.6) take(map(direct));
+  }
+
   const pick = sug.map((x) => {
-      const s = sim(x.title, title), ym = !!(yr && x.year && Math.abs(x.year - yr) <= 1);
-      return { x, s, ym, score: s + (ym ? 0.5 : 0) };
-    }).filter((o) => o.s >= 0.6 || o.ym).sort((a, b) => b.score - a.score).map((o) => o.x);
-  for (const x of pick.slice(0, 3)) { const m = take(await byId(x.id)); if (m) return done(m); }
+    const similarity = sim(x.title, title);
+    const yearMatch = !!(yr && x.year && Math.abs(x.year - yr) <= 1);
+    return { x, similarity, yearMatch, score: similarity + (yearMatch ? 0.15 : 0) };
+  }).filter((o) => o.similarity >= 0.6)
+    .sort((a, b) => b.score - a.score)
+    .map((o) => o.x);
 
-  // 2. OMDb exacte titel (met jaar indien bekend)
-  const d = await omdb({ t: title, ...(yr ? { y: yr } : {}), plot: "short" }, key);
-  dbg.steps.push("t:" + (d.Response === "True" ? d.Title + "(" + d.imdbRating + ")" : d.Error));
-  if (d.Response === "True" && sim(d.Title, title) >= 0.6) { const m = take(map(d)); if (m) return done(m); }
+  const checked = await Promise.all(pick.slice(0, 3).map(async (x) => {
+    try { return { x, m: await byId(x.id) }; }
+    catch (e) {
+      if (["bad-key", "limit"].includes(e && e.message)) throw e;
+      dbg.steps.push("i-fout:" + x.id);
+      return { x, m: null };
+    }
+  }));
+  for (const item of checked) {
+    if (!item.m || sim(item.m.title, title) < 0.6) continue;
+    const m = take(item.m);
+    if (m) return done(m);
+  }
 
-  // 3. OMDb zoeken en de best passende kiezen
-  const s = await omdb({ s: title }, key);
-  dbg.steps.push("s:" + (s.Response === "True" ? (s.Search || []).length : s.Error));
-  if (s.Response === "True" && s.Search && s.Search.length) {
-    const best = s.Search.filter((x) => x.Type !== "game" && x.Type !== "episode")
-      .map((x) => ({ x, sc: sim(x.Title, title) + (yr && Math.abs(parseInt(x.Year, 10) - yr) <= 1 ? 0.2 : 0) }))
-      .filter((o) => o.sc >= 0.6).sort((p, q) => q.sc - p.sc);
-    for (const o of best.slice(0, 2)) { const m = take(await byId(o.x.imdbID)); if (m) return done(m); }
+  try {
+    const search = await omdb({ s: title }, key);
+    dbg.steps.push("s:" + (search.Response === "True" ? (search.Search || []).length : search.Error));
+    if (search.Response === "True" && search.Search && search.Search.length) {
+      const best = search.Search.filter((x) => x.Type !== "game" && x.Type !== "episode")
+        .map((x) => ({ x, similarity: sim(x.Title, title), yearMatch: !!(yr && Math.abs(parseInt(x.Year, 10) - yr) <= 1) }))
+        .filter((o) => o.similarity >= 0.6)
+        .sort((a, b) => (b.similarity + (b.yearMatch ? 0.15 : 0)) - (a.similarity + (a.yearMatch ? 0.15 : 0)));
+      const results = await Promise.all(best.slice(0, 2).map(async (o) => {
+        try { return await byId(o.x.imdbID); }
+        catch (e) {
+          if (["bad-key", "limit"].includes(e && e.message)) throw e;
+          return null;
+        }
+      }));
+      for (const m0 of results) {
+        if (!m0 || sim(m0.title, title) < 0.6) continue;
+        const m = take(m0);
+        if (m) return done(m);
+      }
+    }
+  } catch (e) {
+    if (["bad-key", "limit"].includes(e && e.message)) throw e;
+    dbg.steps.push("s-fout:" + (e && e.message || "onbekend"));
   }
   return done(fallback || { rating: null });
 }
