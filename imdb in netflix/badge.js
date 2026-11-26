@@ -50,6 +50,7 @@ globalThis.IMDbUI = (() => {
     hooks = hooks || {};
     const style = ["badge", "compact", "minimal"].includes(o.style) ? o.style : "badge";
     const a = h("a", "imdb-badge imdb-sz-" + o.size + " imdb-style-" + style);
+    if (style !== "badge") a.classList.add("imdb-text");
     const setLink = () => {
       if (!res || !res.id) return;
       a.href = "https://www.imdb.com/title/" + res.id + "/";
@@ -76,8 +77,12 @@ globalThis.IMDbUI = (() => {
 
     const noRatingText = res && res.id ? "IMDb · geen score" : "IMDb · niet gevonden";
     if (style !== "badge") {
-      a.classList.add("imdb-text");
       let text = hasRating ? "IMDb " + number.toFixed(1) : noRatingText;
+      const shortError = res && res.error === "no-key" ? "IMDb · key nodig"
+        : res && res.error === "bad-key" ? "IMDb · key ongeldig"
+        : res && res.error === "limit" ? "IMDb · limiet bereikt"
+        : res && res.error ? "IMDb · niet beschikbaar" : null;
+      if (!hasRating && shortError) text = shortError;
       if (style === "compact") {
         if (o.showRT && hasRT) text += " · RT " + res.rt + "%";
         if (o.showMeta && hasMeta) text += " · Meta " + res.metascore;
