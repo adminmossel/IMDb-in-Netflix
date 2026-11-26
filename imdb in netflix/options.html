@@ -166,6 +166,13 @@ button{font:inherit;cursor:pointer}
     <div id="status" class="status" role="status"></div>
   </section>
 
+
+  <h2 data-i18n="trailersTitle">Optional trailers</h2><section class="panel">
+  <div class="opt"><span data-i18n="trailersHelp">Enable trailers in the hover info card</span><label class="sw"><input type="checkbox" id="trailerEnabled"><i></i></label></div>
+  <p class="hint" data-i18n="tmdbIntro">Trailers are off by default. Add your own free TMDb API key and enable the switch to use this feature. Without both, no trailer requests are made.</p>
+  <div class="inp"><input id="tmdbKey" type="password" placeholder="TMDb API key" autocomplete="off" spellcheck="false" aria-label="TMDb API key"><button id="tmdbEye" class="ghost" type="button">Show</button></div>
+  <button id="tmdbSave" class="primary" type="button"><span data-i18n="tmdbSave">Test and save TMDb key</span><span class="spin"></span></button><div id="tmdbStatus" class="status" role="status"></div>
+  <p class="hint"><a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener" data-i18n="tmdbLink">Get a TMDb API key</a></p></section>
   <h2 data-i18n="display">Display</h2>
   <section class="panel">
     <div class="opt"><span><span data-i18n="rottenTomatoes">Rotten Tomatoes</span><small data-i18n="rottenHelp">Show the Rotten Tomatoes score in the badge</small></span><label class="sw"><input type="checkbox" id="showRT"><i></i></label></div>
