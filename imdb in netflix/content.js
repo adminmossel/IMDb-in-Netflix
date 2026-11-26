@@ -1,5 +1,5 @@
 const UI = globalThis.IMDbUI;
-const DEF = { showMeta: true, showRT: true, showVotes: false, showCard: true, size: "m", debug: false };
+const DEF = { showMeta: true, showRT: true, showVotes: false, showCard: true, showCards: true, showHover: true, showMain: true, size: "m", style: "badge", playbackMode: "tiny", debug: false };
 let S = { ...DEF };
 const hooks = { onOptions: () => chrome.runtime.sendMessage({ type: "options" }).catch(() => {}) };
 
@@ -15,6 +15,7 @@ function resetAll() {
   document.querySelectorAll(".imdb-badge").forEach((b) => b.remove());
   document.querySelectorAll("[data-imdb-id], [data-imdb-fail]").forEach((e) => { delete e.dataset.imdbId; delete e.dataset.imdbFail; });
   resById.clear();
+  pendingById.clear();
   scan();
 }
 
@@ -55,33 +56,48 @@ function nfPump() { while (nfActive < 3 && nfQueue.length) { nfActive++; nfQueue
 const nfWhy = new Map();   // id -> reden waarom de Netflix-titelpagina niets opleverde
 async function netflixInfo(id) {
   let r;
-  try { r = await fetch("/title/" + id, { credentials: "include" }); }
-  catch (e) { nfWhy.set(id, "fetch-fout: " + e.message); return null; }
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 7000);
+    try { r = await fetch("/title/" + id, { credentials: "include", signal: controller.signal }); }
+    finally { clearTimeout(timeout); }
+  } catch (e) { nfWhy.set(id, "fetch-fout: " + e.message); return null; }
   if (!r.ok) { nfWhy.set(id, "titelpagina status " + r.status); return null; }
   const html = await r.text();
   const doc = new DOMParser().parseFromString(html, "text/html");
   let t = null, ly = null;
-  for (const s of doc.querySelectorAll('script[type="application/ld+json"]')) {
-    try {
-      const j0 = JSON.parse(s.textContent), j = Array.isArray(j0) ? j0[0] : j0;
-      if (j && j.name) {
-        t = j.name;
-        ly = String(j.datePublished || j.dateCreated || j.copyrightYear || "").slice(0, 4) || null;
-        break;
-      }
-    } catch {}
+  const aliases = [];
+  const addAlias = (v) => {
+    if (typeof v === "string") {
+      const x = cleanTitle(v);
+      if (x && x.length < 100 && !aliases.some((a) => a.toLowerCase() === x.toLowerCase())) aliases.push(x);
+    }
+  };
+  const visit = (node) => {
+    if (!node) return;
+    if (Array.isArray(node)) { node.forEach(visit); return; }
+    if (typeof node !== "object") return;
+    if (node["@graph"]) visit(node["@graph"]);
+    if (!t && node.name) t = node.name;
+    addAlias(node.alternateName);
+    addAlias(node.alternateHeadline);
+    if (!ly) ly = String(node.datePublished || node.dateCreated || node.copyrightYear || "").slice(0, 4) || null;
+  };
+  for (const script of doc.querySelectorAll('script[type="application/ld+json"]')) {
+    try { visit(JSON.parse(script.textContent)); } catch {}
+    if (t && ly) break;
   }
   t = cleanTitle(t || doc.querySelector('meta[property="og:title"]')?.content || doc.title);
   if (!t) { nfWhy.set(id, "geen titel in pagina (titel: " + (doc.title || "leeg") + ")"); return null; }
   const y = ly || (html.match(/"releaseYear"\s*:\s*(\d{4})/) || [])[1];
-  return { title: t, year: y ? +y : null };
+  return { title: t, aliases, year: y ? +y : null };
 }
 
 const idCache = new Map();
 function infoFromId(id) {
   if (!idCache.has(id)) {
     idCache.set(id, (async () => {
-      const k = "n1:" + id;
+      const k = "n2:" + id;
       try {
         const st = (await chrome.storage.local.get([k]))[k];
         if (st && Date.now() - st.t < 30 * 864e5) return st.v;
@@ -98,38 +114,57 @@ function infoFromId(id) {
 // Titels uit de zichtbare pagina zelf (logo-alt, kaart-label, fallback-tekst): vangnet als de titelpagina niets geeft
 function domTitles(host) {
   const out = [];
-  const add = (t) => { t = cleanTitle(t); if (t && t.length < 90 && !out.some((x) => x.toLowerCase() === t.toLowerCase())) out.push(t); };
+  const add = (t) => {
+    t = cleanTitle(t);
+    if (t && t.length < 90 && !out.some((x) => x.toLowerCase() === t.toLowerCase())) out.push(t);
+  };
   if (!host) return out;
   add(host.getAttribute && host.getAttribute("aria-label"));
-  host.querySelectorAll('img[alt], .fallback-text, [data-uia*="title"]').forEach((e) => add(e.alt || e.textContent));
+  add(host.getAttribute && host.getAttribute("title"));
+  add(host.getAttribute && host.getAttribute("data-title"));
+  host.querySelectorAll('img[alt], .fallback-text, [data-uia*="title"], [aria-label], [title]').forEach((e) => {
+    add(e.alt || e.getAttribute("aria-label") || e.getAttribute("title") || e.textContent);
+  });
   return out;
 }
 
-const resById = new Map();   // id -> gevonden resultaat (hergebruik overal)
+const resById = new Map();   // id -> herbruikbaar resultaat, ook als er geen rating is
+const pendingById = new Map();
+
 async function lookup(id, host, extra) {
   if (resById.has(id)) return resById.get(id);
-  const r = await lookup1(id, host, extra);
-  if (r && r.rating != null) resById.set(id, r);
-  return r;
+  if (pendingById.has(id)) return pendingById.get(id);
+  const p = lookup1(id, host, extra).then((r) => {
+    if (r && !["fetch", "ctx"].includes(r.error)) resById.set(id, r);
+    return r;
+  }).finally(() => pendingById.delete(id));
+  pendingById.set(id, p);
+  return p;
 }
 async function lookup1(id, host, extra) {
   const info = await infoFromId(id);
   const yr = info && info.year;
   const cands = [];
-  const push = (t, src, y) => { if (t && !cands.some((c) => c.t.toLowerCase() === t.toLowerCase())) cands.push({ t, src, y }); };
+  const push = (t, src, y) => {
+    t = cleanTitle(t);
+    if (t && !cands.some((c) => c.t.toLowerCase() === t.toLowerCase())) cands.push({ t, src, y });
+  };
   if (info && info.title) push(info.title, "netflix-pagina", yr);
+  (info && info.aliases || []).forEach((t) => push(t, "alternatieve-titel", yr));
   domTitles(host).forEach((t) => push(t, "pagina-dom", yr));
-  (extra || []).forEach((t) => push(cleanTitle(t), "pagina-meta", yr));
-
+  (extra || []).forEach((t) => push(t, "pagina-meta", yr));
   const why = nfWhy.get(id) || "";
   if (!cands.length) return { rating: null, dbg: { q: "(geen titel gevonden)", y: null, steps: ["id " + id, "netflix: " + (why || "onbekend")] } };
-  let last;
-  for (const c of cands.slice(0, 3)) {
+  let fallback = null;
+  for (const c of cands.slice(0, 6)) {
     const r = await ask(c.t, c.y);
-    if (r.error || r.rating != null) return r;
-    last = { ...r, dbg: { ...(r.dbg || { q: c.t, y: c.y, steps: [] }), steps: [...((r.dbg && r.dbg.steps) || []), "bron:" + c.src] } };
+    if (r.error) return r;
+    if (r.rating != null) return r;
+    if (r.id && !fallback) {
+      fallback = { ...r, dbg: { ...(r.dbg || { q: c.t, y: c.y, steps: [] }), steps: [...((r.dbg && r.dbg.steps) || []), "bron:" + c.src] } };
+    }
   }
-  return last;
+  return fallback || { rating: null, dbg: { q: cands[0].t, y: cands[0].y, steps: ["Geen betrouwbare match gevonden", ...cands.slice(0, 6).map((c) => "titelbron:" + c.src)] } };
 }
 
 // ---------- hover-infokaart ----------
@@ -152,7 +187,7 @@ window.addEventListener("scroll", hideCard, { passive: true });
 function build(res, size, extra) {
   const b = UI.makeBadge(res, { ...S, size: size || S.size }, hooks);
   if (extra) b.classList.add(extra);
-  if (res && res.rating && S.showCard) {
+  if (res && S.showCard && (res.rating != null || res.id || res.title || res.plot)) {
     b.addEventListener("mouseenter", () => showCard(b, res));
     b.addEventListener("mouseleave", hideCard);
   }
@@ -169,8 +204,6 @@ function render(host, id, extra) {
   lookup(id, host).then((res) => {
     if (host.dataset.imdbId !== id) return;
     host.querySelector(":scope > .imdb-badge")?.remove();
-    const useful = res && (res.rating != null || res.id || ["no-key", "bad-key", "limit"].includes(res.error));
-    if (!useful && !S.debug) { host.dataset.imdbFail = id; return; }
     host.appendChild(build(res, null, extra));
   });
 }
@@ -178,13 +211,15 @@ const inView = (r) => r.right > -300 && r.left < innerWidth + 300 && r.bottom > 
 
 // ---------- badges op de kaartjes in de rijen ----------
 function scanCards() {
+  if (!S.showCards) return;
   document.querySelectorAll('a[href*="/watch/"], a[href*="/title/"]').forEach((a) => {
     if (a.closest("[data-imdb-hover]")) return;
     const id = idOf(a.getAttribute("href"));
-    if (!id || !a.querySelector("img")) return;
+    if (!id) return;
     const r = a.getBoundingClientRect();
-    if (r.width < 100 || r.width > 520 || r.height < r.width * 0.45 || !inView(r)) return;   // kaartje, geen hero/logo
-    if (a.dataset.imdbFail === id) return;
+    if (r.width < 100 || r.width > 560 || r.height < r.width * 0.42 || !inView(r)) return;
+    const hasArtwork = !!a.querySelector("img, video, [data-uia*='title'], [style*='background-image']");
+    if (!hasArtwork && !a.getAttribute("aria-label") && !a.getAttribute("title")) return;
     if (a.dataset.imdbId === id && a.querySelector(":scope > .imdb-badge")) return;
     render(a, id);
   });
@@ -193,6 +228,7 @@ function scanCards() {
 // ---------- badge op Netflix' hover-voorbeeldkaart (Play / + / duim) ----------
 const PLAY = /^(play|afspelen|speel af|resume|hervat|doorgaan|continue)/i;
 function scanHover() {
+  if (!S.showHover) return;
   document.querySelectorAll('[data-uia*="play"], button[aria-label], a[aria-label]').forEach((el) => {
     const label = el.getAttribute("aria-label") || "";
     if (!(PLAY.test(label) || /play-button/.test(el.getAttribute("data-uia") || ""))) return;
@@ -245,13 +281,17 @@ let pending = null;
 async function updateMain() {
   const id = currentId();
   const existing = document.querySelector(".imdb-main");
-  if (!id) { existing?.remove(); return; }
+  if (!S.showMain || !id) { existing?.remove(); return; }
   if (existing && existing.dataset.id === id && existing.isConnected) return;
   existing?.remove();
   if (pending === id) return;
   pending = id;
   const meta = /^\/title\//.test(location.pathname)
     ? [document.querySelector('meta[property="og:title"]')?.content, document.title] : [];
+  const loader = UI.makeBadge({ loading: true }, { ...S, size: BIGGER[S.size] || "l" });
+  loader.classList.add("imdb-main");
+  loader.dataset.id = id;
+  place(loader);
   const res = await lookup(id, document.querySelector('[role="dialog"], .previewModal--info, .detail-modal'), meta);
   pending = null;
   if (currentId() !== id) return;
@@ -262,10 +302,20 @@ async function updateMain() {
   place(badge);
 }
 
-function scan() { scanHover(); scanCards(); updateMain(); }
+function syncPlayback() {
+  const playing = [...document.querySelectorAll("video")].some((v) => {
+    const r = v.getBoundingClientRect();
+    return !v.paused && v.readyState >= 2 && r.width > 120 && r.height > 70;
+  });
+  document.documentElement.classList.toggle("imdb-playback-tiny", playing && S.playbackMode === "tiny");
+  document.documentElement.classList.toggle("imdb-playback-hidden", playing && S.playbackMode === "hide");
+}
+document.addEventListener("play", syncPlayback, true);
+document.addEventListener("pause", syncPlayback, true);
+function scan() { scanHover(); scanCards(); updateMain(); syncPlayback(); }
 
 let timer;
 new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(scan, 250); })
   .observe(document.body, { childList: true, subtree: true });
-setInterval(scan, 1500);
+setInterval(scan, 1800);
 scan();
