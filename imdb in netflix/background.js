@@ -280,6 +280,6 @@ chrome.runtime.onInstalled.addListener(async (d) => {
   if (d.reason === "install") chrome.runtime.openOptionsPage();
   // Oude cacheversies opruimen; de nieuwe matcher gebruikt r5 en n3.
   const all = await chrome.storage.local.get(null);
-  const old = Object.keys(all).filter((k) => /^(r2:|r3:|r4:|r5:)/.test(k) || /^(n1:|n2:|n3:)/.test(k));
+  const old = Object.keys(all).filter((k) => /^(r2:|r3:|r4:|r5:)/.test(k) || /^(n1:|n2:|n3:|n4:)/.test(k));
   if (old.length) chrome.storage.local.remove(old);
 });
