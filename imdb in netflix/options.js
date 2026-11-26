@@ -1,5 +1,5 @@
 
-const I18N = {
+const $ = (id) => document.getElementById(id);\nconst I18N = {
  en: {
   pageTitle:"See IMDb ratings on every Netflix title",lead:"This extension adds IMDb, Rotten Tomatoes and Metascore ratings to Netflix title cards. Hover over a badge to see the poster, plot and cast. A free API key is required to retrieve ratings.",
   getKey:"Get a free API key",keyIntro:"It takes about two minutes and is free. The free OMDb plan includes 1,000 requests per day. Ratings are cached for a week to reduce requests.",
