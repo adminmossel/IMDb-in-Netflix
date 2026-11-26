@@ -86,7 +86,7 @@ async function netflixInfo(id) {
   const watchHtml = await fetchHtml("/watch/");
   const metadataScore = (html) => {
     if (!html) return -1;
-    return (html.match(/application\\/ld\\+json/gi) || []).length * 5 +
+    return (html.match(/application\/ld\+json/gi) || []).length * 5 +
       (html.match(/og:title|name="title"/gi) || []).length * 3 +
       (html.match(/titleType|videoType|releaseYear|datePublished/gi) || []).length * 2;
   };
@@ -107,14 +107,14 @@ async function netflixInfo(id) {
     if (typeof node !== "object") return;
     const schemaTypes = [].concat(node["@type"] || []).map(x => String(x));
     const series = schemaTypes.some(x => /TVSeries|TVMiniSeries|CreativeWorkSeries/i.test(x));
-    const movie = schemaTypes.some(x => /\\bMovie\\b/i.test(x));
+    const movie = schemaTypes.some(x => /\bMovie\b/i.test(x));
     // Koppel naam, jaar en type uitsluitend binnen hetzelfde schema-object.
     // Eerder lekte een globale mediaType naar willekeurige geneste objecten,
     // waardoor bijvoorbeeld de naam van een andere entiteit als filmtitel kon gelden.
     if (series || movie) {
       const name = cleanTitle(node.name || node.headline);
       if (name) {
-        const date = String(node.datePublished || node.dateCreated || node.startDate || node.copyrightYear || "").match(/\\d{4}/)?.[0] || null;
+        const date = String(node.datePublished || node.dateCreated || node.startDate || node.copyrightYear || "").match(/\d{4}/)?.[0] || null;
         typed.push({ title: name, mediaType: series ? "series" : "movie", year: date ? +date : null });
         addAlias(node.alternateName);
         addAlias(node.alternateHeadline);
@@ -128,7 +128,7 @@ async function netflixInfo(id) {
     try { visit(JSON.parse(script.textContent)); } catch {}
   }
   const ogType = doc.querySelector('meta[property="og:type"]')?.content || "";
-  const rawType = (html.match(/"(?:titleType|videoType)"\\s*:\\s*"(movie|series|tvSeries|tvMiniSeries)"/i) || [])[1];
+  const rawType = (html.match(/"(?:titleType|videoType)"\s*:\s*"(movie|series|tvSeries|tvMiniSeries)"/i) || [])[1];
   const fallbackType = /tv|series|show/i.test(ogType) || /series/i.test(rawType || "") ? "series"
     : /movie|film/i.test(ogType) || /movie/i.test(rawType || "") ? "movie" : null;
 
@@ -144,7 +144,7 @@ async function netflixInfo(id) {
     nfWhy.set(id, "geen titel in Netflix-metadata (paginatitel: " + (doc.title || "leeg") + ")");
     return null;
   }
-  const year = best?.year || parseInt((html.match(/"releaseYear"\\s*:\\s*(\\d{4})/) || [])[1], 10) || null;
+  const year = best?.year || parseInt((html.match(/"releaseYear"\s*:\s*(\d{4})/) || [])[1], 10) || null;
   const mediaType = best?.mediaType || fallbackType;
   return { title, aliases, year, mediaType };
 }
