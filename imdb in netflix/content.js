@@ -22,14 +22,14 @@ function resetAll() {
 
 // ---------- rating opvragen (fouten worden niet onthouden) ----------
 const cache = new Map();
-function ask(title, year) {
-  const k = title.toLowerCase() + "|" + (year || "");
+function ask(title, year, mediaType) {
+  const k = title.toLowerCase() + "|" + (year || "") + "|" + (mediaType || "");
   if (!cache.has(k)) {
     cache.set(k, (async () => {
       let timer;
       try {
         const response = await Promise.race([
-          chrome.runtime.sendMessage({ type: "rating", title, year }),
+          chrome.runtime.sendMessage({ type: "rating", title, year, mediaType }),
           new Promise((resolve) => { timer = setTimeout(() => resolve({ error: "fetch" }), 22000); })
         ]);
         const r = response || { error: "fetch" };
@@ -78,7 +78,7 @@ async function netflixInfo(id) {
   if (!r.ok) { nfWhy.set(id, "titelpagina status " + r.status); return null; }
   const html = await r.text();
   const doc = new DOMParser().parseFromString(html, "text/html");
-  let t = null, ly = null;
+  let t = null, ly = null, mediaType = null;
   const aliases = [];
   const addAlias = (v) => {
     if (typeof v === "string") {
@@ -91,7 +91,10 @@ async function netflixInfo(id) {
     if (Array.isArray(node)) { node.forEach(visit); return; }
     if (typeof node !== "object") return;
     if (node["@graph"]) visit(node["@graph"]);
-    if (!t && node.name) t = node.name;
+    const schemaType = [].concat(node["@type"] || []).join(" ");
+    if (/TVSeries|TVMiniSeries|CreativeWorkSeries/i.test(schemaType)) mediaType = "series";
+    else if (/\bMovie\b/i.test(schemaType) && !mediaType) mediaType = "movie";
+    if (!t && node.name && (mediaType || /TVSeries|TVMiniSeries|Movie/i.test(schemaType))) t = node.name;
     addAlias(node.alternateName);
     addAlias(node.alternateHeadline);
     if (!ly) ly = String(node.datePublished || node.dateCreated || node.copyrightYear || "").slice(0, 4) || null;
@@ -103,7 +106,7 @@ async function netflixInfo(id) {
   t = cleanTitle(t || doc.querySelector('meta[property="og:title"]')?.content || doc.title);
   if (!t) { nfWhy.set(id, "geen titel in pagina (titel: " + (doc.title || "leeg") + ")"); return null; }
   const y = ly || (html.match(/"releaseYear"\s*:\s*(\d{4})/) || [])[1];
-  return { title: t, aliases, year: y ? +y : null };
+  return { title: t, aliases, year: y ? +y : null, mediaType };
 }
 
 const idCache = new Map();
@@ -157,6 +160,7 @@ async function lookup(id, host, extra) {
 async function lookup1(id, host, extra) {
   const info = await infoFromId(id);
   const yr = info && info.year;
+  const mediaType = info && info.mediaType;
   const cands = [];
   const push = (t, src, y) => {
     t = cleanTitle(t);
@@ -170,7 +174,7 @@ async function lookup1(id, host, extra) {
   if (!cands.length) return { rating: null, dbg: { q: "(geen titel gevonden)", y: null, steps: ["id " + id, "netflix: " + (why || "onbekend")] } };
   let fallback = null;
   for (const c of cands.slice(0, 6)) {
-    const r = await ask(c.t, c.y);
+    const r = await ask(c.t, c.y, mediaType);
     if (r.error) return r;
     if (r.rating != null) return r;
     if (r.id && !fallback) {
@@ -234,8 +238,14 @@ function scanCards() {
     if (a.closest("[data-imdb-hover]")) return;
     const id = idOf(a.getAttribute("href"));
     if (!id) return;
+
+    // Alleen echte poster-/titelkaarten. Gewone navigatielinks mogen nooit een overlay krijgen:
+    // dat kan Netflix' eigen hover- en schaalanimaties verstoren.
+    const poster = a.querySelector('img, video, [data-uia*="boxart"], [class*="boxart"], [style*="background-image"]');
+    if (!poster) return;
+
     const r = a.getBoundingClientRect();
-    if (r.width < 100 || r.width > 560 || r.height < r.width * 0.42 || !inView(r)) return;
+    if (r.width < 64 || r.width > 620 || r.height < r.width * 0.38 || !inView(r)) return;
     if (a.dataset.imdbId === id && a.querySelector(":scope > .imdb-badge")) return;
     render(a, id);
   });
@@ -331,6 +341,13 @@ function syncPlayback() {
 document.addEventListener("play", syncPlayback, true);
 document.addEventListener("pause", syncPlayback, true);
 function scan() { scanHover(); scanCards(); updateMain(); syncPlayback(); }
+let scanTimer;
+function queueScan() {
+  clearTimeout(scanTimer);
+  scanTimer = setTimeout(scan, 120);
+}
+document.addEventListener("scroll", queueScan, true);
+window.addEventListener("resize", queueScan, { passive: true });
 
 let timer;
 new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(scan, 250); })
