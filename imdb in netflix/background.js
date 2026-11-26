@@ -2,7 +2,7 @@
 // eigen backend die de officiële IMDb API (AWS Data Exchange) gebruikt.
 const TTL = 7 * 24 * 60 * 60 * 1000;      // gevonden ratings: 7 dagen
 const NEG_TTL = 3 * 60 * 60 * 1000;      // "niet gevonden": 3 uur
-const PREFIX = "r7:"                     // nieuwe cache-versie (oude, foute resultaten vervallen)
+const PREFIX = "r8:"                     // nieuwe cache-versie (oude, foute resultaten vervallen)
 
 // ---------- titel-vergelijking: voorkomt dat een verkeerde film wordt getoond ----------
 const norm = (s) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -102,98 +102,119 @@ async function suggest(title) {
 }
 
 async function fetchRating(title, key, year, mediaType) {
-  const yr = parseInt(year, 10) || null;
+  const yr = parseInt(String(year || "").match(/\d{4}/)?.[0], 10) || null;
   const dbg = { q: title, y: yr, steps: [] };
-  const done = (m) => ({ ...m, dbg });
-  const take = (m) => m && m.rating != null ? { ...m, verified: true } : null;
+  const done = (result) => ({ ...result, dbg });
+  const take = (result) => result && result.rating != null
+    ? { ...result, verified: true }
+    : null;
+  const exactTitle = (a, b) => !!norm(a) && norm(a) === norm(b);
+  const checkRecord = (record) => !!(
+    record &&
+    exactTitle(record.title, title) &&
+    typeCompatible(record.type, mediaType) &&
+    yearCompatible(record.year, yr)
+  );
+
   const byId = async (id) => {
-    const d = await omdb({ i: id, plot: "short" }, key);
-    dbg.steps.push("i=" + id + ":" + (d.Response === "True" ? d.imdbRating : d.Error));
-    return d.Response === "True" ? map(d) : null;
+    const data = await omdb({ i: id, plot: "short" }, key);
+    dbg.steps.push("i=" + id + ":" + (data.Response === "True" ? data.imdbRating : data.Error));
+    return data.Response === "True" ? map(data) : null;
   };
 
-  const [sug, direct] = await Promise.all([
+  const [suggestions, direct] = await Promise.all([
     suggest(title),
     omdb({ t: title, ...(yr ? { y: yr } : {}), plot: "short" }, key)
-      .catch((e) => {
-        if (["bad-key", "limit"].includes(e && e.message)) throw e;
-        dbg.steps.push("t-fout:" + (e && e.message || "onbekend"));
+      .catch((error) => {
+        if (["bad-key", "limit"].includes(error && error.message)) throw error;
+        dbg.steps.push("t-fout:" + (error && error.message || "onbekend"));
         return null;
       })
   ]);
-  dbg.steps.push("suggesties:" + sug.length);
 
-  // If Netflix provides neither type nor year, do not guess when IMDb returns
-  // an exact-title movie AND an exact-title series (e.g. S.W.A.T.).
-  const exactKinds = new Set(sug
-    .filter((x) => sim(x.title, title) >= 0.9 && yearCompatible(x.year, yr))
-    .map((x) => suggestionMediaBucket(x.qid))
-    .filter(Boolean));
-  if (!mediaType && !yr && exactKinds.has("movie") && exactKinds.has("series")) {
-    dbg.steps.push("ambigue titel: zowel film als serie; veilige match overgeslagen");
+  dbg.steps.push("suggesties:" + suggestions.length);
+
+  // Alleen exacte titelsuggesties van een bekend film-/serietype zijn kandidaten.
+  // Geen substring- of woordoverlapmatches: die waren te riskant voor korte titels.
+  let eligible = suggestions
+    .filter((item) =>
+      item.id &&
+      /^tt\d+$/.test(item.id) &&
+      exactTitle(item.title, title) &&
+      !!suggestionMediaBucket(item.qid) &&
+      suggestionTypeCompatible(item.qid, mediaType) &&
+      yearCompatible(item.year, yr)
+    );
+
+  // Bij een bekend jaar krijgt een exact jaartal voorrang op de marge van één jaar.
+  if (yr) {
+    const exactYear = eligible.filter(item => Number(item.year) === yr);
+    if (exactYear.length) eligible = exactYear;
+  }
+  const unique = [...new Map(eligible.map(item => [item.id, item])).values()];
+
+  // Een unieke IMDb-suggestie is de veiligste route: haal die ID rechtstreeks op bij OMDb.
+  if (unique.length === 1) {
+    try {
+      const record = await byId(unique[0].id);
+      if (checkRecord(record)) {
+        const result = take(record);
+        if (result) return done(result);
+      }
+      dbg.steps.push("unieke suggestie verworpen: titel/jaar/type wijkt af");
+    } catch (error) {
+      if (["bad-key", "limit"].includes(error && error.message)) throw error;
+      dbg.steps.push("i-fout:" + unique[0].id);
+    }
+  } else if (unique.length > 1) {
+    dbg.steps.push("ambigue IMDb-suggesties:" + unique.map(item => item.id).join(","));
     return done({ rating: null });
   }
 
-  if (direct) {
-    dbg.steps.push("t:" + (direct.Response === "True" ? direct.Title + "(" + direct.imdbRating + ")" : direct.Error));
-    if (direct.Response === "True") {
-      const candidate = map(direct);
-      const safe = sim(candidate.title, title) >= 0.82 &&
-        typeCompatible(candidate.type, mediaType) &&
-        yearCompatible(candidate.year, yr);
-      if (safe) {
-        const m = take(candidate);
-        if (m) return done(m);
-      }
+  // De directe OMDb-titelzoekactie mag alleen als Netflix zowel jaar als type kent.
+  // Anders kan OMDb bij gelijknamige titels stilzwijgend de verkeerde productie kiezen.
+  if (yr && mediaType && direct && direct.Response === "True") {
+    const record = map(direct);
+    dbg.steps.push("t:" + direct.Title + "(" + direct.imdbRating + ")");
+    if (checkRecord(record)) {
+      const result = take(record);
+      if (result) return done(result);
     }
+  } else if (direct) {
+    dbg.steps.push("directe titelmatch niet gebruikt: onvoldoende Netflix-context");
   }
 
-  const pick = sug.map((x) => {
-    const similarity = sim(x.title, title);
-    const yearMatch = !!(yr && x.year && Math.abs(x.year - yr) <= 1);
-    return { x, similarity, yearMatch, score: similarity + (yearMatch ? 0.15 : 0) };
-  }).filter((o) => o.similarity >= 0.6 && suggestionTypeCompatible(o.x.qid, mediaType) && yearCompatible(o.x.year, yr))
-    .sort((a, b) => b.score - a.score)
-    .map((o) => o.x);
-
-  const checked = await Promise.all(pick.slice(0, 3).map(async (x) => {
-    try { return { x, m: await byId(x.id) }; }
-    catch (e) {
-      if (["bad-key", "limit"].includes(e && e.message)) throw e;
-      dbg.steps.push("i-fout:" + x.id);
-      return { x, m: null };
-    }
-  }));
-  for (const item of checked) {
-    if (!item.m || sim(item.m.title, title) < 0.82 || !typeCompatible(item.m.type, mediaType) || !yearCompatible(item.m.year, yr)) continue;
-    const m = take(item.m);
-    if (m) return done(m);
-  }
-
-  try {
-    const search = await omdb({ s: title }, key);
-    dbg.steps.push("s:" + (search.Response === "True" ? (search.Search || []).length : search.Error));
-    if (search.Response === "True" && search.Search && search.Search.length) {
-      const best = search.Search.filter((x) => x.Type !== "game" && x.Type !== "episode" && typeCompatible(x.Type, mediaType) && yearCompatible(x.Year, yr))
-        .map((x) => ({ x, similarity: sim(x.Title, title), yearMatch: !!(yr && Math.abs(parseInt(x.Year, 10) - yr) <= 1) }))
-        .filter((o) => o.similarity >= 0.6)
-        .sort((a, b) => (b.similarity + (b.yearMatch ? 0.15 : 0)) - (a.similarity + (a.yearMatch ? 0.15 : 0)));
-      const results = await Promise.all(best.slice(0, 2).map(async (o) => {
-        try { return await byId(o.x.imdbID); }
-        catch (e) {
-          if (["bad-key", "limit"].includes(e && e.message)) throw e;
-          return null;
+  // OMDb-search is uitsluitend een laatste vangnet wanneer jaar én type bekend zijn.
+  if (yr && mediaType) {
+    try {
+      const search = await omdb({ s: title }, key);
+      dbg.steps.push("s:" + (search.Response === "True" ? (search.Search || []).length : search.Error));
+      if (search.Response === "True" && Array.isArray(search.Search)) {
+        let matches = search.Search.filter(item =>
+          item.imdbID &&
+          exactTitle(item.Title, title) &&
+          item.Type !== "game" &&
+          item.Type !== "episode" &&
+          typeCompatible(item.Type, mediaType) &&
+          yearCompatible(item.Year, yr)
+        );
+        const exactYear = matches.filter(item => Number(item.Year) === yr);
+        if (exactYear.length) matches = exactYear;
+        const ids = [...new Map(matches.map(item => [item.imdbID, item])).values()];
+        if (ids.length === 1) {
+          const record = await byId(ids[0].imdbID);
+          if (checkRecord(record)) {
+            const result = take(record);
+            if (result) return done(result);
+          }
+        } else if (ids.length > 1) {
+          dbg.steps.push("ambigue OMDb-zoekresultaten:" + ids.map(item => item.imdbID).join(","));
         }
-      }));
-      for (const m0 of results) {
-        if (!m0 || sim(m0.title, title) < 0.82 || !typeCompatible(m0.type, mediaType) || !yearCompatible(m0.year, yr)) continue;
-        const m = take(m0);
-        if (m) return done(m);
       }
+    } catch (error) {
+      if (["bad-key", "limit"].includes(error && error.message)) throw error;
+      dbg.steps.push("s-fout:" + (error && error.message || "onbekend"));
     }
-  } catch (e) {
-    if (["bad-key", "limit"].includes(e && e.message)) throw e;
-    dbg.steps.push("s-fout:" + (e && e.message || "onbekend"));
   }
   return done({ rating: null });
 }
