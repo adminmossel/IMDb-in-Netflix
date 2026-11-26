@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "IMDb Rating voor Netflix",
+  "version": "0.3.3",
+  "description": "Toont IMDb-, Rotten Tomatoes- en Metascore-ratings op Netflix, met een infokaart bij hover.",
+  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "permissions": ["storage"],
+  "host_permissions": ["https://www.omdbapi.com/*", "https://v2.sg.media-imdb.com/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://www.netflix.com/*"],
+      "js": ["badge.js", "content.js"],
+      "css": ["badge.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "options.html"
+}

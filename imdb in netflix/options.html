@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="nl">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IMDb Rating voor Netflix</title>
+<link rel="stylesheet" href="badge.css">
+<style>
+:root{--bg:#0e0e10;--surf:#17171a;--line:#2a2a30;--txt:#f3f2ee;--mut:#9b9ba5;--y:#f5c518;--g:#46d369;--r:#ff5a5f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.55 "Segoe UI","Helvetica Neue",Arial,sans-serif}
+main{max-width:760px;margin:0 auto;padding:48px 20px 80px}
+h1{font-size:34px;line-height:1.15;margin:18px 0 10px;letter-spacing:-.02em}
+h2{font-size:21px;margin:56px 0 6px;letter-spacing:-.01em}
+h3{font-size:16px;margin:0 0 4px}
+p{margin:0 0 8px;color:var(--mut)}
+a{color:var(--y)}
+.lead{font-size:17px;max-width:52ch}
+#heroBadge .imdb-badge{position:static;font-size:30px;animation:none}
+#heroBadge .imdb-badge:hover{transform:none}
+
+/* ---------- stappen ---------- */
+.steps{list-style:none;margin:20px 0 0;padding:0;display:grid;gap:14px}
+.step{display:grid;grid-template-columns:34px 1fr 210px;gap:16px;align-items:center;padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--surf)}
+.num{width:34px;height:34px;border-radius:50%;background:var(--y);color:#000;font-weight:800;display:grid;place-items:center}
+.demo{position:relative;height:112px;border-radius:10px;background:#0b0b0d;border:1px solid var(--line);overflow:hidden;font-size:11px}
+.bar{display:flex;gap:4px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--line)}
+.bar i{width:6px;height:6px;border-radius:50%;background:#3a3a42}
+.url{margin-left:6px;padding:1px 8px;border-radius:99px;background:#1d1d22;color:var(--mut);font-size:10px}
+.pad{padding:10px}
+.sk{height:7px;border-radius:4px;background:#25252b;margin-bottom:6px}
+.fbtn{display:inline-block;padding:4px 10px;border-radius:6px;background:var(--y);color:#000;font-weight:700;position:relative}
+.fbtn::after{content:"";position:absolute;inset:0;border-radius:6px;border:2px solid var(--y);opacity:0;animation:ripple 5s infinite}
+.cursor{position:absolute;width:13px;height:17px;background:#fff;clip-path:polygon(0 0,0 100%,30% 76%,52% 100%,66% 91%,46% 66%,82% 66%);animation:cur 5s infinite}
+@keyframes cur{0%{left:12%;top:80%}38%,60%{left:58%;top:62%}100%{left:12%;top:80%}}
+@keyframes ripple{0%,40%{opacity:0;transform:scale(1)}45%{opacity:.9;transform:scale(1)}65%{opacity:0;transform:scale(1.5)}100%{opacity:0}}
+.radio{display:flex;align-items:center;gap:6px;margin-bottom:5px;color:var(--mut)}
+.radio u{width:11px;height:11px;border-radius:50%;border:2px solid #555;display:grid;place-items:center;text-decoration:none}
+.radio u b{width:5px;height:5px;border-radius:50%;background:var(--y);transform:scale(0);animation:dot 5s infinite}
+.radio.on{color:var(--txt)}
+@keyframes dot{0%,12%{transform:scale(0)}22%,92%{transform:scale(1)}100%{transform:scale(0)}}
+.field{border:1px solid #34343b;border-radius:5px;padding:3px 6px;margin-bottom:6px;color:var(--txt);font-family:Consolas,monospace;min-height:20px}
+.type{display:inline-block;overflow:hidden;white-space:nowrap;vertical-align:bottom;width:0;border-right:2px solid var(--y);animation:typing 5s steps(14) infinite}
+@keyframes typing{0%,35%{width:0}70%,100%{width:14ch}}
+@keyframes typing8{0%,15%{width:0}50%,100%{width:8ch}}
+.mail{margin:12px;padding:10px;border-radius:8px;background:#1d1d22;position:relative}
+.mail .fbtn{margin-top:4px;animation:pulse 1.6s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(245,197,24,.55)}60%{box-shadow:0 0 0 8px rgba(245,197,24,0)}}
+.ping{position:absolute;top:-5px;right:-5px;width:12px;height:12px;border-radius:50%;background:var(--r);animation:bounce 1.4s infinite}
+@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+.tick{position:absolute;right:12px;bottom:12px;width:26px;height:26px;border-radius:50%;background:var(--g);display:grid;place-items:center;transform:scale(0);animation:tick 5s infinite}
+.tick svg{width:15px;height:15px}
+@keyframes tick{0%,60%{transform:scale(0)}72%{transform:scale(1.2)}80%,92%{transform:scale(1)}100%{transform:scale(0)}}
+
+/* ---------- key-invoer ---------- */
+.panel{margin-top:20px;padding:22px;border:1px solid var(--line);border-radius:14px;background:var(--surf)}
+.panel.key{border-color:#5b4c12;box-shadow:0 0 0 4px rgba(245,197,24,.08)}
+.inp{display:flex;gap:8px;margin:10px 0}
+.inp input{flex:1;min-width:0;padding:12px 14px;border-radius:10px;border:1px solid #3a3a42;background:#0e0e10;color:var(--txt);font:16px Consolas,monospace;letter-spacing:.04em}
+.inp input:focus{outline:2px solid var(--y);outline-offset:1px}
+button{font:inherit;cursor:pointer}
+.ghost{padding:0 14px;border-radius:10px;border:1px solid #3a3a42;background:transparent;color:var(--txt)}
+.ghost:hover{background:#222228}
+.primary{display:inline-flex;align-items:center;gap:10px;padding:12px 20px;border:0;border-radius:10px;background:var(--y);color:#000;font-weight:700}
+.primary:hover{filter:brightness(1.08)}
+.primary:disabled{opacity:.7;cursor:wait}
+.spin{display:none;width:15px;height:15px;border:2px solid #0004;border-top-color:#000;border-radius:50%;animation:spin .7s linear infinite}
+.busy .spin{display:block}
+@keyframes spin{to{transform:rotate(360deg)}}
+.status{display:none;align-items:flex-start;gap:10px;margin-top:14px;padding:12px 14px;border-radius:10px;font-size:14px}
+.status.show{display:flex}
+.status.ok{background:rgba(70,211,105,.12);color:#9be9b2}
+.status.warn{background:rgba(245,197,24,.12);color:#f2d86a}
+.status.err{background:rgba(255,90,95,.12);color:#ff9a9d;animation:shake .35s}
+.status svg{flex:none;width:20px;height:20px}
+.status .draw{stroke-dasharray:24;stroke-dashoffset:24;animation:draw .45s .1s forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes shake{20%,60%{transform:translateX(-5px)}40%,80%{transform:translateX(5px)}}
+.hint{font-size:13px}
+
+/* ---------- instellingen ---------- */
+.opt{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0;border-bottom:1px solid var(--line)}
+.opt:last-of-type{border-bottom:0}
+.opt span small{display:block;color:var(--mut);font-size:13px}
+.sw{position:relative;flex:none;width:44px;height:26px}
+.sw input{position:absolute;inset:0;opacity:0;cursor:pointer;margin:0}
+.sw i{position:absolute;inset:0;border-radius:99px;background:#3a3a42;transition:background .18s;pointer-events:none}
+.sw i::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .18s}
+.sw input:checked+i{background:var(--y)}
+.sw input:checked+i::after{transform:translateX(18px);background:#000}
+.sw input:focus-visible+i{outline:2px solid var(--y);outline-offset:2px}
+.seg{display:inline-flex;border:1px solid #3a3a42;border-radius:10px;overflow:hidden}
+.seg button{padding:7px 16px;border:0;background:transparent;color:var(--mut)}
+.seg button[aria-pressed=true]{background:var(--y);color:#000;font-weight:700}
+.preview{margin-top:18px;padding:18px;border-radius:12px;background:#000 linear-gradient(135deg,#1c1c22,#0b0b0d);border:1px solid var(--line)}
+#pv .imdb-badge{position:static;animation:none}
+#pv .imdb-badge:hover{transform:none}
+#pvc{margin-top:14px}
+#pvc .imdb-card{position:static;animation:none;width:auto}
+.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);padding:10px 16px;border-radius:99px;background:var(--g);color:#000;font-weight:700;opacity:0;transition:.25s;pointer-events:none}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.panel summary{cursor:pointer;font-weight:600}
+.linkbtn{background:none;border:0;padding:0;color:var(--y);text-decoration:underline}
+
+@media(max-width:640px){.step{grid-template-columns:34px 1fr}.demo{grid-column:1 / -1}}
+@media(prefers-reduced-motion:reduce){
+  .demo *,.status *,.toast,.spin{animation:none!important}
+  .type{width:14ch}.radio u b{transform:scale(1)}.tick{transform:scale(1)}.cursor{left:58%;top:62%}
+}
+</style>
+<body>
+<main>
+  <div id="heroBadge"></div>
+  <h1>Zie de IMDb-rating op elke Netflix-titel</h1>
+  <p class="lead">De extensie zet rating, Rotten Tomatoes en Metascore op elk kaartje. Hover over de badge voor poster, plot en cast. Om ratings op te halen heeft hij eenmalig een gratis sleutel (API key) nodig.</p>
+
+  <h2>Gratis key aanvragen</h2>
+  <p>Dit duurt twee minuten en kost niets. Je krijgt 1.000 opzoekingen per dag, ruim voldoende omdat elke titel een week onthouden wordt.</p>
+
+  <ol class="steps">
+    <li class="step">
+      <div class="num">1</div>
+      <div><h3>Open de aanvraagpagina van OMDb</h3><p>OMDb is de dienst waar de ratings vandaan komen. <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener">Open omdbapi.com/apikey.aspx</a> in een nieuw tabblad.</p></div>
+      <div class="demo" aria-hidden="true">
+        <div class="bar"><i></i><i></i><i></i><span class="url">omdbapi.com</span></div>
+        <div class="pad"><div class="sk" style="width:70%"></div><div class="sk" style="width:45%"></div><span class="fbtn">API Key</span></div>
+        <div class="cursor"></div>
+      </div>
+    </li>
+    <li class="step">
+      <div class="num">2</div>
+      <div><h3>Kies FREE en vul je e-mailadres in</h3><p>Kies de gratis optie (1.000 per dag), vul je gegevens in en druk op Submit. Bij "Use" mag je "Personal" invullen.</p></div>
+      <div class="demo" aria-hidden="true"><div class="pad">
+        <div class="radio on"><u><b></b></u>FREE (1.000 per dag)</div>
+        <div class="radio"><u></u>Patreon</div>
+        <div class="field"><span class="type">jij@voorbeeld.nl</span></div>
+        <span class="fbtn">Submit</span>
+      </div></div>
+    </li>
+    <li class="step">
+      <div class="num">3</div>
+      <div><h3>Activeer de key via de e-mail</h3><p>Je krijgt direct een mail met je key. Klik op de activatielink in die mail, anders werkt de key niet. Niks ontvangen? Kijk in je spam.</p></div>
+      <div class="demo" aria-hidden="true">
+        <div class="mail"><span class="ping"></span><div class="sk" style="width:60%"></div><div class="sk" style="width:85%"></div><span class="fbtn">Activate key</span></div>
+      </div>
+    </li>
+    <li class="step">
+      <div class="num">4</div>
+      <div><h3>Plak de key hieronder</h3><p>Kopieer de key (een code van ongeveer 8 tekens) uit de mail en plak hem in het veld hieronder. Je mag ook de hele activatielink plakken, de key wordt er vanzelf uitgehaald.</p></div>
+      <div class="demo" aria-hidden="true"><div class="pad" style="padding-top:26px">
+        <div class="field"><span class="type" style="animation-name:typing8">a1b2c3d4</span></div>
+        <span class="fbtn">Testen en opslaan</span>
+      </div>
+        <div class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></div>
+      </div>
+    </li>
+  </ol>
+
+  <section class="panel key">
+    <h3>Jouw API key</h3>
+    <div class="inp">
+      <input id="key" type="password" placeholder="bijvoorbeeld a1b2c3d4" autocomplete="off" spellcheck="false" aria-label="OMDb API key">
+      <button id="eye" class="ghost" type="button" aria-pressed="false">Tonen</button>
+    </div>
+    <button id="save" class="primary" type="button"><span class="lbl">Testen en opslaan</span><span class="spin"></span></button>
+    <div id="status" class="status" role="status"></div>
+  </section>
+
+  <h2>Weergave</h2>
+  <section class="panel">
+    <div class="opt"><span>Rotten Tomatoes<small>Toon het tomatenpercentage in de badge</small></span><label class="sw"><input type="checkbox" id="showRT"><i></i></label></div>
+    <div class="opt"><span>Metascore<small>Toon de Metacritic-score</small></span><label class="sw"><input type="checkbox" id="showMeta"><i></i></label></div>
+    <div class="opt"><span>Aantal stemmen<small>Bijvoorbeeld 2,9M naast de rating</small></span><label class="sw"><input type="checkbox" id="showVotes"><i></i></label></div>
+    <div class="opt"><span>Infokaart bij hover<small>Poster, plot, cast en awards als je op de badge wijst</small></span><label class="sw"><input type="checkbox" id="showCard"><i></i></label></div>
+    <div class="opt"><span>Foutopsporing<small>Toon ook badges die niets vonden, met uitleg in de tooltip</small></span><label class="sw"><input type="checkbox" id="debug"><i></i></label></div>
+    <div class="opt"><span>Grootte</span>
+      <div class="seg" id="size"><button data-v="s" aria-pressed="false">Klein</button><button data-v="m" aria-pressed="false">Normaal</button><button data-v="l" aria-pressed="false">Groot</button></div></div>
+    <div class="preview"><div id="pv"></div><div id="pvc"></div></div>
+  </section>
+
+  <h2>Problemen oplossen</h2>
+  <details class="panel"><summary>Diagnose: waarom zie ik geen ratings?</summary>
+    <p style="margin-top:12px">Test de verbinding en een titel naar keuze (titel en jaar zoals Netflix ze toont). Stuur me de uitkomst als het niet werkt.</p>
+    <div class="inp"><input id="dq" value="Turning Point: The Vietnam War" aria-label="Titel"><input id="dy" value="2025" style="max-width:90px" aria-label="Jaar"></div>
+    <button id="diag" class="primary" type="button">Diagnose starten</button>
+    <pre id="diagOut" style="white-space:pre-wrap;word-break:break-all;margin:14px 0 0;color:var(--mut);font:12px/1.5 Consolas,monospace"></pre>
+  </details>
+  <p>Ratings kloppen niet of zijn verouderd? <button class="linkbtn" id="clear">Cache leegmaken</button> en ververs Netflix.</p>
+  <p class="hint">Staat er "–" bij een titel? OMDb kent alleen Engelse titels. Titels die Netflix in het Nederlands toont, worden soms niet gevonden. Liever een verkeerde film dan een foute rating, dus zulke titels blijven leeg.</p>
+</main>
+<p class="hint" style="text-align:center;margin-bottom:40px" id="ver"></p>
+<div class="toast" id="toast"></div>
+<script src="badge.js"></script>
+<script src="options.js"></script>
