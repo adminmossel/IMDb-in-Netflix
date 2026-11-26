@@ -8,10 +8,12 @@ I made this for my own Netflix browsing and kept adding the bits I wanted to see
 
 ## What it does
 
-- Adds an IMDb score to Netflix title cards, hover previews and title pages.
-- Shows Rotten Tomatoes and Metascore when that information is available.
+- Adds ratings to Netflix title cards, hover previews and the main title information page. Similar-title rows are scanned as they appear while scrolling.
+- Keeps a small IMDb label visible even when there is no IMDb rating, and still shows Rotten Tomatoes or Metascore when either is available.
 - Lets you hover over a rating to see more: poster, plot, genre, director, cast, awards and box office.
 - Can show the vote count next to the IMDb score.
+- Offers three display styles: a full badge, compact text, or a minimal IMDb-only line.
+- Lets you choose where ratings appear and whether badges shrink or disappear while a video is playing.
 - Has a settings page where you can choose which scores to show, change badge size and enable debug information.
 - Tries IMDb suggestions as well as OMDb title search, which helps with some alternative and translated titles.
 - Caches results locally, so it doesn't request the same rating every time you scroll past a title.
@@ -22,7 +24,7 @@ I made this for my own Netflix browsing and kept adding the bits I wanted to see
 
 <img src="https://github.com/user-attachments/assets/398d4321-1a12-4824-8e28-479e4962d98b" alt="Ratings shown in Netflix" width="755">
 
-The badge has a small pop-in animation. While a rating is loading, it uses a shimmer placeholder. These are the actual CSS keyframes from [badge.css](imdb%20in%20netflix/badge.css):
+The badge has a small pop-in animation. While a rating is loading, three subtle dots pulse like a native interface. This is the actual CSS animation from [badge.css](imdb%20in%20netflix/badge.css):
 
 ```css
 @keyframes imdbPop {
@@ -30,8 +32,9 @@ The badge has a small pop-in animation. While a rating is loading, it uses a shi
   to   { opacity: 1; transform: none; }
 }
 
-@keyframes imdbShimmer {
-  to { background-position: -200% 0; }
+@keyframes imdbDot {
+  0%, 80%, 100% { opacity: .3; transform: scale(.78); }
+  40% { opacity: 1; transform: scale(1); }
 }
 ```
 
@@ -61,19 +64,22 @@ The extension uses OMDb for the rating details, so you need your own API key.
 2. Choose the free plan and follow the activation link in the email.
 3. Paste the key into the extension's settings page and click **Test and save**.
 
-The free plan currently offers 1,000 requests per day. Found ratings are cached for 7 days; titles without a rating are cached for 12 hours. The settings page has a built-in connection and title diagnostic if something isn't showing up.
+The free plan currently offers 1,000 requests per day. Found ratings are cached for 7 days; results without a rating are retried after 3 hours. The settings page has a built-in connection and title diagnostic if something isn't showing up.
 
 ## Settings
 
 You can switch these on or off:
 
-- Rotten Tomatoes score
-- Metascore
-- Vote count
-- Hover info card
-- Debug mode
+- Rotten Tomatoes score, Metascore and vote count
+- Ratings on title cards and similar-title rows
+- Ratings in hover previews and on the main title page
+- The poster and details hover card
 
-You can also choose a small, medium or large badge. The settings page is available in English and Dutch.
+You can choose a full badge, compact text or a minimal IMDb-only line. There is also a small, medium or large size setting and a playback option: keep the badge normal, shrink it, or hide it while a video is playing. The settings page is available in English and Dutch.
+
+## Device support
+
+This version is a Chrome Manifest V3 extension for desktop browsers that support Chrome extensions. It does not run inside the Netflix app on a smart TV, Apple TV, console or phone. Chrome on phones does not support installing desktop extensions. An iPhone/iPad edition is technically possible through a separate Safari Web Extension app and packaging step; it is not included in this repository yet. For a TV, the practical workaround is to run Netflix in desktop Chrome on a computer connected to the TV.
 
 ## A note on missing ratings
 
