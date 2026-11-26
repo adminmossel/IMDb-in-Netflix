@@ -2,7 +2,7 @@
 // eigen backend die de officiële IMDb API (AWS Data Exchange) gebruikt.
 const TTL = 7 * 24 * 60 * 60 * 1000;      // gevonden ratings: 7 dagen
 const NEG_TTL = 3 * 60 * 60 * 1000;      // "niet gevonden": 3 uur
-const PREFIX = "r6:"                     // nieuwe cache-versie (oude, foute resultaten vervallen)
+const PREFIX = "r7:"                     // nieuwe cache-versie (oude, foute resultaten vervallen)
 
 // ---------- titel-vergelijking: voorkomt dat een verkeerde film wordt getoond ----------
 const norm = (s) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -20,9 +20,11 @@ function sim(a, b) {
 }
 
 function yearCompatible(candidateYear, requestedYear) {
-  const a = parseInt(String(candidateYear || "").match(/\d{4}/)?.[0], 10);
-  const b = parseInt(String(requestedYear || "").match(/\d{4}/)?.[0], 10);
-  return !a || !b || Math.abs(a - b) <= 1;
+  const a = parseInt(String(candidateYear || "").match(/\\d{4}/)?.[0], 10);
+  const b = parseInt(String(requestedYear || "").match(/\\d{4}/)?.[0], 10);
+  // Als Netflix een jaar levert, accepteren we geen titel uit een ander jaar.
+  // Een verschil van één jaar veroorzaakte aantoonbaar verwisselingen bij gelijknamige titels.
+  return !a || !b || a === b;
 }
 
 function typeCompatible(candidateType, requestedType) {
@@ -102,13 +104,8 @@ async function suggest(title) {
 async function fetchRating(title, key, year, mediaType) {
   const yr = parseInt(year, 10) || null;
   const dbg = { q: title, y: yr, steps: [] };
-  let fallback = null;
   const done = (m) => ({ ...m, dbg });
-  const take = (m) => {
-    if (m && m.rating != null) return { ...m, verified: true };
-    if (m && m.id && !fallback) fallback = { ...m, verified: true };
-    return null;
-  };
+  const take = (m) => m && m.rating != null ? { ...m, verified: true } : null;
   const byId = async (id) => {
     const d = await omdb({ i: id, plot: "short" }, key);
     dbg.steps.push("i=" + id + ":" + (d.Response === "True" ? d.imdbRating : d.Error));
@@ -198,7 +195,7 @@ async function fetchRating(title, key, year, mediaType) {
     if (["bad-key", "limit"].includes(e && e.message)) throw e;
     dbg.steps.push("s-fout:" + (e && e.message || "onbekend"));
   }
-  return done(fallback || { rating: null });
+  return done({ rating: null });
 }
 
 
@@ -278,8 +275,8 @@ chrome.runtime.onMessage.addListener((msg, _s, send) => {
 
 chrome.runtime.onInstalled.addListener(async (d) => {
   if (d.reason === "install") chrome.runtime.openOptionsPage();
-  // Oude cacheversies opruimen; de nieuwe matcher gebruikt r5 en n3.
+  // Oude rating- en Netflix-metadata-caches opruimen na wijzigingen in de matcher.
   const all = await chrome.storage.local.get(null);
-  const old = Object.keys(all).filter((k) => /^(r2:|r3:|r4:|r5:)/.test(k) || /^(n1:|n2:|n3:|n4:)/.test(k));
+  const old = Object.keys(all).filter((k) => /^(r\\d+:)/.test(k) || /^(n\\d+:)/.test(k));
   if (old.length) chrome.storage.local.remove(old);
 });
