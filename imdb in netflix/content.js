@@ -8,6 +8,7 @@ chrome.storage.sync.get(Object.keys(DEF)).then((d) => { S = { ...DEF, ...d }; re
 chrome.storage.onChanged.addListener((c, area) => {
   if (area !== "sync") return;
   for (const k in c) if (k in DEF) S[k] = c[k].newValue ?? DEF[k];
+  if (c.apiKey) cache.clear();
   resetAll();
 });
 function resetAll() {
