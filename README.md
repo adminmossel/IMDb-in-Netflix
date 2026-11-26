@@ -1,4 +1,4 @@
-# IMDb ratings in Netflix
+# IMDb ratings in Netflix with trailers
 
 <sub>Current version: **0.5.2**</sub>
 
