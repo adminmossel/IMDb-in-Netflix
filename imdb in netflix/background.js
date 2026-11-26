@@ -19,6 +19,26 @@ function sim(a, b) {
   return i / (A.size + B.size - i);
 }
 
+function yearCompatible(candidateYear, requestedYear) {
+  const a = parseInt(String(candidateYear || "").match(/\d{4}/)?.[0], 10);
+  const b = parseInt(String(requestedYear || "").match(/\d{4}/)?.[0], 10);
+  return !a || !b || Math.abs(a - b) <= 1;
+}
+
+function typeCompatible(candidateType, requestedType) {
+  if (!requestedType) return true;
+  const actual = String(candidateType || "").toLowerCase();
+  if (requestedType === "series") return actual === "series";
+  if (requestedType === "movie") return actual === "movie";
+  return true;
+}
+
+function suggestionTypeCompatible(qid, requestedType) {
+  if (!requestedType) return true;
+  if (requestedType === "series") return /^(tvSeries|tvMiniSeries)$/i.test(qid || "");
+  return /^(movie|tvMovie|tvSpecial|tvShort|short)$/i.test(qid || "");
+}
+
 // ---------- OMDb ----------
 async function omdb(params, apiKey) {
   const u = new URL("https://www.omdbapi.com/");
@@ -73,7 +93,7 @@ async function suggest(title) {
   finally { clearTimeout(timeout); }
 }
 
-async function fetchRating(title, key, year) {
+async function fetchRating(title, key, year, mediaType) {
   const yr = parseInt(year, 10) || null;
   const dbg = { q: title, y: yr, steps: [] };
   let fallback = null;
@@ -102,18 +122,23 @@ async function fetchRating(title, key, year) {
 
   if (direct) {
     dbg.steps.push("t:" + (direct.Response === "True" ? direct.Title + "(" + direct.imdbRating + ")" : direct.Error));
-    if (direct.Response === "True" && sim(direct.Title, title) >= 0.6) {
-      const m = take(map(direct));
-      if (m) return done(m);
+    if (direct.Response === "True") {
+      const candidate = map(direct);
+      const safe = sim(candidate.title, title) >= 0.6 &&
+        typeCompatible(candidate.type, mediaType) &&
+        yearCompatible(candidate.year, yr);
+      if (safe) {
+        const m = take(candidate);
+        if (m) return done(m);
+      }
     }
-    if (direct.Response === "True" && sim(direct.Title, title) >= 0.6) take(map(direct));
   }
 
   const pick = sug.map((x) => {
     const similarity = sim(x.title, title);
     const yearMatch = !!(yr && x.year && Math.abs(x.year - yr) <= 1);
     return { x, similarity, yearMatch, score: similarity + (yearMatch ? 0.15 : 0) };
-  }).filter((o) => o.similarity >= 0.6)
+  }).filter((o) => o.similarity >= 0.6 && suggestionTypeCompatible(o.x.qid, mediaType) && yearCompatible(o.x.year, yr))
     .sort((a, b) => b.score - a.score)
     .map((o) => o.x);
 
@@ -126,7 +151,7 @@ async function fetchRating(title, key, year) {
     }
   }));
   for (const item of checked) {
-    if (!item.m || sim(item.m.title, title) < 0.6) continue;
+    if (!item.m || sim(item.m.title, title) < 0.6 || !typeCompatible(item.m.type, mediaType) || !yearCompatible(item.m.year, yr)) continue;
     const m = take(item.m);
     if (m) return done(m);
   }
@@ -135,7 +160,7 @@ async function fetchRating(title, key, year) {
     const search = await omdb({ s: title }, key);
     dbg.steps.push("s:" + (search.Response === "True" ? (search.Search || []).length : search.Error));
     if (search.Response === "True" && search.Search && search.Search.length) {
-      const best = search.Search.filter((x) => x.Type !== "game" && x.Type !== "episode")
+      const best = search.Search.filter((x) => x.Type !== "game" && x.Type !== "episode" && typeCompatible(x.Type, mediaType) && yearCompatible(x.Year, yr))
         .map((x) => ({ x, similarity: sim(x.Title, title), yearMatch: !!(yr && Math.abs(parseInt(x.Year, 10) - yr) <= 1) }))
         .filter((o) => o.similarity >= 0.6)
         .sort((a, b) => (b.similarity + (b.yearMatch ? 0.15 : 0)) - (a.similarity + (a.yearMatch ? 0.15 : 0)));
@@ -147,7 +172,7 @@ async function fetchRating(title, key, year) {
         }
       }));
       for (const m0 of results) {
-        if (!m0 || sim(m0.title, title) < 0.6) continue;
+        if (!m0 || sim(m0.title, title) < 0.6 || !typeCompatible(m0.type, mediaType) || !yearCompatible(m0.year, yr)) continue;
         const m = take(m0);
         if (m) return done(m);
       }
@@ -172,8 +197,8 @@ function pump() {
 }
 const inflight = new Map();
 
-async function getRating(title, year, nocache) {
-  const key = PREFIX + norm(title) + (year ? ":" + year : "");
+async function getRating(title, year, nocache, mediaType) {
+  const key = PREFIX + norm(title) + (year ? ":" + year : "") + ":" + (mediaType || "any");
   const hit = (await chrome.storage.local.get([key]))[key];
   if (!nocache && hit && Date.now() - hit.t < (hit.v.rating == null ? NEG_TTL : TTL)) return hit.v;
 
@@ -181,7 +206,7 @@ async function getRating(title, year, nocache) {
   if (!apiKey) return { error: "no-key" };
 
   if (!inflight.has(key)) {
-    inflight.set(key, limit(() => fetchRating(title, apiKey, year)).finally(() => inflight.delete(key)));
+    inflight.set(key, limit(() => fetchRating(title, apiKey, year, mediaType)).finally(() => inflight.delete(key)));
   }
   const v = await inflight.get(key);
   await chrome.storage.local.set({ [key]: { t: Date.now(), v } });   // fouten worden NIET gecachet
@@ -190,7 +215,7 @@ async function getRating(title, year, nocache) {
 
 chrome.runtime.onMessage.addListener((msg, _s, send) => {
   if (msg.type === "rating") {
-    getRating(msg.title, msg.year, msg.nocache).then(send).catch((e) =>
+    getRating(msg.title, msg.year, msg.nocache, msg.mediaType).then(send).catch((e) =>
       send({ error: ["bad-key", "limit"].includes(e && e.message) ? e.message : "fetch" }));
     return true;
   }
