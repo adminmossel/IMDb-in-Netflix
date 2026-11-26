@@ -1,87 +1,78 @@
-# 🎬 IMDb in Netflix
+# IMDb ratings in Netflix
 
-<p align="center">
-  <strong>Know what you're watching before you press play.</strong><br>
-  IMDb and Rotten Tomatoes ratings, right where you browse Netflix.
-</p>
+A small Chrome extension that puts IMDb ratings straight onto Netflix. It also shows Rotten Tomatoes and Metascore, so you can get a quick idea of a film or series without opening three extra tabs.
 
-<p align="center">
-  <a href="https://github.com/adminmossel/IMDb-in-Netflix">
-    <img alt="GitHub repository" src="https://img.shields.io/badge/GitHub-IMDb%20in%20Netflix-181717?logo=github">
-  </a>
-  <img alt="Made for Netflix" src="https://img.shields.io/badge/Made%20for-Netflix-E50914?logo=netflix&logoColor=white">
-</p>
+I made this for my own Netflix browsing and kept adding the bits I wanted to see.
 
-**IMDb in Netflix** is a browser extension that brings external movie and TV ratings into your Netflix browsing experience. Quickly check ratings while exploring titles, compare what looks interesting, and spend less time switching between websites.
+## What it does
 
----
+- Adds an IMDb score to Netflix title cards, hover previews and title pages.
+- Shows Rotten Tomatoes and Metascore when that information is available.
+- Lets you hover over a rating to see more: poster, plot, genre, director, cast, awards and box office.
+- Can show the vote count next to the IMDb score.
+- Has a settings page where you can choose which scores to show, change badge size and enable debug information.
+- Tries IMDb suggestions as well as OMDb title search, which helps with some alternative and translated titles.
+- Caches results locally, so it doesn't request the same rating every time you scroll past a title.
 
-## ✨ Features
+## A look at it
 
-- ⭐ **IMDb ratings** — see IMDb scores while browsing Netflix.
-- 🍅 **Rotten Tomatoes ratings** — check Rotten Tomatoes scores alongside IMDb.
-- 🎞️ **Ratings in context** — view rating information as part of your Netflix discovery flow.
-- ⚡ **Less tab switching** — get a quick indication of how a title is rated without manually looking it up elsewhere.
+<img src="https://github.com/user-attachments/assets/b8b64838-7d92-4358-9ad3-8c866d11fe6c" alt="IMDb rating badge" width="443">
 
-## 📸 Screenshots
+<img src="https://github.com/user-attachments/assets/398d4321-1a12-4824-8e28-479e4962d98b" alt="Ratings shown in Netflix" width="755">
 
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/b8b64838-7d92-4358-9ad3-8c866d11fe6c" alt="IMDb in Netflix rating overview" width="80%">
-</p>
+The badge has a small pop-in animation. While a rating is loading, it uses a shimmer placeholder. Those effects are part of the extension's CSS in [badge.css](imdb%20in%20netflix/badge.css) — GitHub README pages don't run the extension's CSS, so the screenshots above are the actual visual preview.
 
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/398d4321-1a12-4824-8e28-479e4962d98b" alt="IMDb in Netflix shown in the Netflix interface" width="80%">
-</p>
+## Install it
 
-## 🚀 Installation
+This is currently a Chrome extension (Manifest V3).
 
-You can install the extension locally by loading it as an unpacked extension.
-
-1. **Download the project**  
-   Clone this repository or download it as a ZIP file.
+1. Download this repository or clone it:
 
    ```bash
    git clone https://github.com/adminmossel/IMDb-in-Netflix.git
    ```
 
-2. **Open your browser's extension page**  
-   In a Chromium-based browser, open the extensions page (for example, `chrome://extensions`).
+2. Open `chrome://extensions` in Chrome.
+3. Turn on **Developer mode**.
+4. Click **Load unpacked**.
+5. Select the **imdb in netflix** folder inside the downloaded repository.
+6. Open Netflix. The extension's settings page should open on first install.
 
-3. **Enable Developer mode**  
-   Turn on the Developer mode toggle.
+## One-time setup: OMDb API key
 
-4. **Load the extension**  
-   Choose **Load unpacked** and select the `imdb in netflix` folder from the downloaded repository.
+The extension uses OMDb for the rating details, so you need your own API key.
 
-5. **Open Netflix**  
-   Visit [Netflix](https://www.netflix.com/) and browse its catalogue.
+1. Get a free key at [omdbapi.com/apikey.aspx](https://www.omdbapi.com/apikey.aspx).
+2. Choose the free plan and follow the activation link in the email.
+3. Paste the key into the extension's settings page and click **Test and save**.
 
-## 🧭 How to use
+The free plan currently offers 1,000 requests per day. Found ratings are cached for 7 days; titles without a rating are cached for 12 hours. The settings page has a built-in connection and title diagnostic if something isn't showing up.
 
-1. Install and enable the extension.
-2. Open Netflix and browse movies or series as usual.
-3. Look for the rating information displayed by the extension.
-4. Use the scores as an extra reference when choosing what to watch.
+## Settings
 
-## 🛠️ Project structure
+You can switch these on or off:
 
-The browser extension's source files are located in the `imdb in netflix/` directory. This keeps the extension implementation separate from repository-level documentation and assets.
+- Rotten Tomatoes score
+- Metascore
+- Vote count
+- Hover info card
+- Debug mode
 
-## 🤝 Contributing
+You can also choose a small, medium or large badge. The settings page is available in English and Dutch.
 
-Ideas, bug reports, and improvements are welcome!
+## A note on missing ratings
 
-- Open an [issue](https://github.com/adminmossel/IMDb-in-Netflix/issues) to report a problem or suggest a feature.
-- Submit a pull request if you'd like to contribute a change.
+Sometimes a title won't have a match. Netflix can use a localized title, while the rating database may list a different title. The extension tries a few ways to match it, but it would rather show no rating than attach the wrong score to a film or series.
 
-When reporting a bug, include your browser, the affected Netflix page or title, and the steps needed to reproduce the issue.
+## Source
 
-## 📄 License
+The extension code lives in [imdb in netflix/](imdb%20in%20netflix/). The main parts are:
 
-Check the repository for license information before redistributing or reusing this project.
+- `content.js` — finds Netflix titles and places the badges.
+- `background.js` — looks up ratings and manages the cache.
+- `badge.js` and `badge.css` — build and style the badges and hover card.
+- `options.html` and `options.js` — settings, API key setup and diagnostics.
 
----
+Made by **adminmossel** in Meppel, The Netherlands.
 
-<p align="center">
-  <strong>Find your next favourite watch. 🍿</strong>
-</p>
+[View the repository](https://github.com/adminmossel/IMDb-in-Netflix)
