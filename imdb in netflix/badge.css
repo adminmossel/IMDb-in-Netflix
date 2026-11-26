@@ -54,6 +54,19 @@
 html.imdb-playback-tiny .imdb-badge { font-size: 9px !important; opacity: .72; padding: .18em .3em; }
 html.imdb-playback-hidden .imdb-badge { display: none !important; }
 
+/* Compacte badge op kleine posters, zoals mini-tegels en More Like This */
+.imdb-host-mini > .imdb-badge {
+  top: 4px; left: 4px; max-width: calc(100% - 8px);
+  gap: .22em; padding: .2em .28em; font-size: 9px;
+  overflow: hidden;
+}
+.imdb-host-mini > .imdb-badge .i-logo { width: 2.05em; }
+.imdb-host-mini > .imdb-badge .imdb-chip,
+.imdb-host-mini > .imdb-badge .imdb-votes { display: none; }
+.imdb-host-mini > .imdb-badge.imdb-text .imdb-inline-text {
+  display: block; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+
 /* badge op Netflix' hover-voorbeeldkaart */
 .imdb-badge.imdb-hover { top: 10px; left: 10px; }
 
