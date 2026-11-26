@@ -69,74 +69,91 @@ function nfPump() { while (nfActive < 3 && nfQueue.length) { nfActive++; nfQueue
 
 const nfWhy = new Map();   // id -> reden waarom de Netflix-titelpagina niets opleverde
 async function netflixInfo(id) {
-  let r;
-  try {
+  // Netflix kan voor /title/ en /watch/ verschillende server-rendered metadata geven.
+  // Vergelijk beide op metadata-inhoud; HTML-lengte alleen is geen betrouwbare maat.
+  const fetchHtml = async (path) => {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 7000);
-    try { r = await fetch("/title/" + id, { credentials: "include", signal: controller.signal }); }
-    finally { clearTimeout(timeout); }
-  } catch (e) { nfWhy.set(id, "fetch-fout: " + e.message); return null; }
-  if (!r.ok) {
-    try { r = await fetch("/watch/" + id, { credentials: "include" }); }
-    catch (e) { nfWhy.set(id, "titelpagina status " + r.status + "; watch-fout: " + e.message); return null; }
-  }
-  if (!r.ok) { nfWhy.set(id, "titelpagina/watch status " + r.status); return null; }
-  let html = await r.text();
-  if (!/application\/ld\+json|og:title|titleType|releaseYear/i.test(html)) {
+    const timeout = setTimeout(() => controller.abort(), 8000);
     try {
-      const alt = await fetch("/watch/" + id, { credentials: "include" });
-      if (alt.ok) {
-        const altHtml = await alt.text();
-        if (altHtml.length > html.length) html = altHtml;
-      }
-    } catch {}
-  }
+      const response = await fetch(path + id, { credentials: "include", signal: controller.signal });
+      return response.ok ? await response.text() : null;
+    } catch (e) {
+      nfWhy.set(id, "fetch-fout: " + (e && e.message || "onbekend"));
+      return null;
+    } finally { clearTimeout(timeout); }
+  };
+  const titleHtml = await fetchHtml("/title/");
+  const watchHtml = await fetchHtml("/watch/");
+  const metadataScore = (html) => {
+    if (!html) return -1;
+    return (html.match(/application\\/ld\\+json/gi) || []).length * 5 +
+      (html.match(/og:title|name="title"/gi) || []).length * 3 +
+      (html.match(/titleType|videoType|releaseYear|datePublished/gi) || []).length * 2;
+  };
+  const html = metadataScore(watchHtml) > metadataScore(titleHtml) ? watchHtml : (titleHtml || watchHtml);
+  if (!html) { nfWhy.set(id, nfWhy.get(id) || "Netflix gaf geen titelpagina terug"); return null; }
+
   const doc = new DOMParser().parseFromString(html, "text/html");
-  let t = null, ly = null, mediaType = null;
+  const typed = [];
   const aliases = [];
   const addAlias = (v) => {
-    if (typeof v === "string") {
-      const x = cleanTitle(v);
-      if (x && x.length < 100 && !aliases.some((a) => a.toLowerCase() === x.toLowerCase())) aliases.push(x);
-    }
+    if (typeof v !== "string") return;
+    const x = cleanTitle(v);
+    if (x && x.length < 100 && !aliases.some((a) => a.toLowerCase() === x.toLowerCase())) aliases.push(x);
   };
   const visit = (node) => {
     if (!node) return;
     if (Array.isArray(node)) { node.forEach(visit); return; }
     if (typeof node !== "object") return;
-    if (node["@graph"]) visit(node["@graph"]);
-    const schemaType = [].concat(node["@type"] || []).join(" ");
-    if (/TVSeries|TVMiniSeries|CreativeWorkSeries/i.test(schemaType)) mediaType = "series";
-    else if (/\bMovie\b/i.test(schemaType) && !mediaType) mediaType = "movie";
-    if (!t && node.name && (mediaType || /TVSeries|TVMiniSeries|Movie/i.test(schemaType))) t = node.name;
-    addAlias(node.alternateName);
-    addAlias(node.alternateHeadline);
-    if (!ly) ly = String(node.datePublished || node.dateCreated || node.copyrightYear || "").slice(0, 4) || null;
-    Object.keys(node).forEach((k) => {
-      if (k !== "@context" && k !== "@graph" && node[k] && typeof node[k] === "object") visit(node[k]);
-    });
+    const schemaTypes = [].concat(node["@type"] || []).map(x => String(x));
+    const series = schemaTypes.some(x => /TVSeries|TVMiniSeries|CreativeWorkSeries/i.test(x));
+    const movie = schemaTypes.some(x => /\\bMovie\\b/i.test(x));
+    // Koppel naam, jaar en type uitsluitend binnen hetzelfde schema-object.
+    // Eerder lekte een globale mediaType naar willekeurige geneste objecten,
+    // waardoor bijvoorbeeld de naam van een andere entiteit als filmtitel kon gelden.
+    if (series || movie) {
+      const name = cleanTitle(node.name || node.headline);
+      if (name) {
+        const date = String(node.datePublished || node.dateCreated || node.startDate || node.copyrightYear || "").match(/\\d{4}/)?.[0] || null;
+        typed.push({ title: name, mediaType: series ? "series" : "movie", year: date ? +date : null });
+        addAlias(node.alternateName);
+        addAlias(node.alternateHeadline);
+      }
+    }
+    for (const [key, value] of Object.entries(node)) {
+      if (key !== "@context" && value && typeof value === "object") visit(value);
+    }
   };
   for (const script of doc.querySelectorAll('script[type="application/ld+json"]')) {
     try { visit(JSON.parse(script.textContent)); } catch {}
-    if (t && ly) break;
   }
-  t = cleanTitle(t || doc.querySelector('meta[property="og:title"]')?.content ||
-    doc.querySelector('meta[name="title"]')?.content || doc.querySelector("h1")?.textContent || doc.title);
-  if (!t) { nfWhy.set(id, "geen titel in pagina (titel: " + (doc.title || "leeg") + ")"); return null; }
   const ogType = doc.querySelector('meta[property="og:type"]')?.content || "";
-  if (!mediaType && /tv|series|show/i.test(ogType)) mediaType = "series";
-  else if (!mediaType && /movie|film/i.test(ogType)) mediaType = "movie";
-  const rawType = (html.match(/"(?:titleType|videoType)"\s*:\s*"(movie|series|tvSeries|tvMiniSeries)"/i) || [])[1];
-  if (!mediaType && rawType) mediaType = /series/i.test(rawType) ? "series" : "movie";
-  const y = ly || (html.match(/"releaseYear"\s*:\s*(\d{4})/) || [])[1];
-  return { title: t, aliases, year: y ? +y : null, mediaType };
+  const rawType = (html.match(/"(?:titleType|videoType)"\\s*:\\s*"(movie|series|tvSeries|tvMiniSeries)"/i) || [])[1];
+  const fallbackType = /tv|series|show/i.test(ogType) || /series/i.test(rawType || "") ? "series"
+    : /movie|film/i.test(ogType) || /movie/i.test(rawType || "") ? "movie" : null;
+
+  // Schema.org met een expliciet Movie/TVSeries-type is leidend.
+  const best = typed.find(x => x.year) || typed[0] || null;
+  const title = best?.title || cleanTitle(
+    doc.querySelector('meta[property="og:title"]')?.content ||
+    doc.querySelector('meta[name="title"]')?.content ||
+    doc.querySelector("h1")?.textContent ||
+    doc.title
+  );
+  if (!title) {
+    nfWhy.set(id, "geen titel in Netflix-metadata (paginatitel: " + (doc.title || "leeg") + ")");
+    return null;
+  }
+  const year = best?.year || parseInt((html.match(/"releaseYear"\\s*:\\s*(\\d{4})/) || [])[1], 10) || null;
+  const mediaType = best?.mediaType || fallbackType;
+  return { title, aliases, year, mediaType };
 }
 
 const idCache = new Map();
 function infoFromId(id) {
   if (!idCache.has(id)) {
     idCache.set(id, (async () => {
-      const k = "n5:" + id;
+      const k = "n6:" + id;
       try {
         const st = (await chrome.storage.local.get([k]))[k];
         if (st && Date.now() - st.t < 30 * 864e5) return st.v;
