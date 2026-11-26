@@ -277,6 +277,6 @@ chrome.runtime.onInstalled.addListener(async (d) => {
   if (d.reason === "install") chrome.runtime.openOptionsPage();
   // Oude rating- en Netflix-metadata-caches opruimen na wijzigingen in de matcher.
   const all = await chrome.storage.local.get(null);
-  const old = Object.keys(all).filter((k) => /^(r\\d+:)/.test(k) || /^(n\\d+:)/.test(k));
+  const old = Object.keys(all).filter((k) => /^(r\d+:)/.test(k) || /^(n\d+:)/.test(k));
   if (old.length) chrome.storage.local.remove(old);
 });
