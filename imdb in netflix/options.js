@@ -68,14 +68,13 @@ $("langEn").addEventListener("click", async () => { setLanguage("en"); await chr
 $("langNl").addEventListener("click", async () => { setLanguage("nl"); await chrome.storage.sync.set({language:"nl"}); });
 chrome.storage.sync.get(["language"]).then(d => setLanguage(d.language || "en"));
 
-const $ = (id) => document.getElementById(id);
 const DEF = { showMeta: true, showRT: true, showVotes: false, showCard: true, size: "m", debug: false };
 let S = { ...DEF };
 const SAMPLE = {
   rating: 8.1, rt: 92, metascore: "74", votes: "1,234,567", id: "tt0000000",
-  title: "Voorbeeldtitel", year: "2024", rated: "PG-13", runtime: "118 min", type: "movie",
-  genre: "Drama, Thriller", director: "Jan Jansen", actors: "Anna de Vries, Pieter Bakker",
-  plot: "Zo ziet de infokaart eruit als je op een badge wijst.", awards: "3 wins & 5 nominations", boxOffice: "$42,000,000"
+  title: "Example Title", year: "2024", rated: "PG-13", runtime: "118 min", type: "movie",
+  genre: "Drama, Thriller", director: "Jane Doe", actors: "Alex Morgan, Sam Taylor",
+  plot: "This is how the info card looks when you hover over a badge.", awards: "3 wins & 5 nominations", boxOffice: "$42,000,000"
 };
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
