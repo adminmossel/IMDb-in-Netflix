@@ -2,7 +2,7 @@
 
 A small Chrome extension that puts IMDb ratings straight onto Netflix. It also shows Rotten Tomatoes and Metascore, so you can get a quick idea of a film or series without opening three extra tabs.
 
-Note: A laptop or desktop is recommended. We're working on support for more browsers like Firefox, as well as TVs and phones. We're also trying to bring this to the app in the future. 🚀
+**Platform support:** this is currently a Chrome extension for desktop browsers. It does not run inside the Netflix apps on phones, tablets, smart TVs or consoles. An iPhone/iPad version would need a separate Safari Web Extension build.
 
 I made this for my own Netflix browsing and kept adding the bits I wanted to see.
 
@@ -24,7 +24,13 @@ I made this for my own Netflix browsing and kept adding the bits I wanted to see
 
 <img src="https://github.com/user-attachments/assets/398d4321-1a12-4824-8e28-479e4962d98b" alt="Ratings shown in Netflix" width="755">
 
-The badge has a small pop-in animation. While a rating is loading, three subtle dots pulse like a native interface. This is the actual CSS animation from [badge.css](imdb%20in%20netflix/badge.css):
+The badge pops in when a result arrives, and the loading indicator uses three softly pulsing dots. These small loops are animated previews of the effects used by the extension (they are illustrative UI previews, not recordings from a live Netflix session):
+
+![IMDb badge pop-in animation](assets/readme-badge-pop.gif)
+
+![Three-dot loading animation](assets/readme-loading-dots.gif)
+
+The corresponding CSS keyframes are in [badge.css](imdb%20in%20netflix/badge.css):
 
 ```css
 @keyframes imdbPop {
@@ -38,7 +44,7 @@ The badge has a small pop-in animation. While a rating is loading, three subtle 
 }
 ```
 
-GitHub doesn't run the extension's CSS inside a README, so I've kept the screenshots as the visual preview and included the real animation code here.
+GitHub does not execute the extension's CSS inside a README, so the GIF previews above show the motion while the code snippet documents the real CSS animation.
 
 ## Install it
 
