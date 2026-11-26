@@ -109,6 +109,7 @@ button{font:inherit;cursor:pointer}
 .topbar{display:flex;justify-content:flex-end;margin-bottom:12px}.language-switch{display:flex;align-items:center;gap:6px;color:var(--mut);font-size:13px}.language-switch button{border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--surf);color:var(--mut)}.language-switch button[aria-pressed="true"]{border-color:var(--y);color:var(--y)}.credit{text-align:center;color:var(--mut);font-size:13px;margin:0 0 36px}.credit strong{color:var(--txt)}\n</style>
 <body>
 <main>
+  <div class="topbar"><div class="language-switch" role="group" aria-label="Language"><span id="languageLabel">Language</span><button type="button" id="langEn" aria-pressed="true">English</button><button type="button" id="langNl" aria-pressed="false">Nederlands</button></div></div>
   <div id="heroBadge"></div>
   <h1 data-i18n="pageTitle">See IMDb ratings on every Netflix title</h1>
   <p class="lead" data-i18n="lead">This extension adds IMDb, Rotten Tomatoes and Metascore ratings to Netflix title cards. Hover over a badge to see the poster, plot and cast. A free API key is required to retrieve ratings.</p>
