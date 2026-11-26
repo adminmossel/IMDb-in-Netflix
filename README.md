@@ -89,3 +89,14 @@ The extension code lives in [imdb in netflix/](imdb%20in%20netflix/). The main p
 Made by **adminmossel** in Meppel, The Netherlands.
 
 [View the repository](https://github.com/adminmossel/IMDb-in-Netflix)
+
+
+# Legal Notice
+
+This software is an *independent project* and is not associated with, endorsed by, authorized by, or sponsored by Netflix, Inc. Netflix and all related names, trademarks, logos, and intellectual property are the property of their respective owners.
+
+The software is designed exclusively for use with Netflix and is intended for lawful purposes only. Users are responsible for ensuring that their use of this software complies with all applicable laws, regulations, and platform policies.
+
+The developer assumes no responsibility for misuse of this software or for any actions taken by users that violate applicable terms, policies, or laws. 
+
+For questions or support, please contact: tygomassalt@gmail.com
