@@ -251,6 +251,7 @@ function scanCards() {
 
     const r = a.getBoundingClientRect();
     if (r.width < 64 || r.width > 620 || r.height < r.width * 0.38 || !inView(r)) return;
+    a.classList.toggle("imdb-host-mini", r.width < 140);
     if (a.dataset.imdbId === id && a.querySelector(":scope > .imdb-badge")) return;
     render(a, id);
   });
