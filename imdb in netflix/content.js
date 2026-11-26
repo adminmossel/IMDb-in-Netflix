@@ -198,7 +198,8 @@ function showCard(badge, res) {
 window.addEventListener("scroll", hideCard, { passive: true });
 
 function build(res, size, extra) {
-  const b = UI.makeBadge(res, { ...S, size: size || S.size }, hooks);
+  const displayRes = res && !S.debug ? { ...res, dbg: null } : res;
+  const b = UI.makeBadge(displayRes, { ...S, size: size || S.size }, hooks);
   if (extra) b.classList.add(extra);
   if (res && S.showCard && (res.rating != null || res.id || res.title || res.plot)) {
     b.addEventListener("mouseenter", () => showCard(b, res));
