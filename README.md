@@ -2,8 +2,6 @@
 
 A small Chrome extension that puts IMDb ratings straight onto Netflix. It also shows Rotten Tomatoes and Metascore, so you can get a quick idea of a film or series without opening three extra tabs.
 
-**Platform support:** this is currently a Chrome extension for desktop browsers. It does not run inside the Netflix apps on phones, tablets, smart TVs or consoles. An iPhone/iPad version would need a separate Safari Web Extension build.
-
 I made this for my own Netflix browsing and kept adding the bits I wanted to see.
 
 ## What it does
