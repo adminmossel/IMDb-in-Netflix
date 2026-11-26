@@ -113,7 +113,7 @@ async function fetchRating(title, key, year, mediaType) {
     record &&
     exactTitle(record.title, title) &&
     typeCompatible(record.type, mediaType) &&
-    yearCompatible(record.year, yr)
+    (!yr || (!!record.year && yearCompatible(record.year, yr)))
   );
 
   const byId = async (id) => {
@@ -149,7 +149,7 @@ async function fetchRating(title, key, year, mediaType) {
       exactTitle(item.title, title) &&
       !!suggestionMediaBucket(item.qid) &&
       suggestionTypeCompatible(item.qid, mediaType) &&
-      yearCompatible(item.year, yr)
+      (!yr || (!!item.year && yearCompatible(item.year, yr)))
     );
 
   // Bij een bekend jaar krijgt een exact jaartal voorrang op de marge van één jaar.
@@ -202,7 +202,7 @@ async function fetchRating(title, key, year, mediaType) {
           item.Type !== "game" &&
           item.Type !== "episode" &&
           typeCompatible(item.Type, mediaType) &&
-          yearCompatible(item.Year, yr)
+          (!yr || (!!item.Year && yearCompatible(item.Year, yr)))
         );
         const exactYear = matches.filter(item => Number(item.Year) === yr);
         if (exactYear.length) matches = exactYear;
