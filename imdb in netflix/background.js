@@ -2,7 +2,7 @@
 // eigen backend die de officiële IMDb API (AWS Data Exchange) gebruikt.
 const TTL = 7 * 24 * 60 * 60 * 1000;      // gevonden ratings: 7 dagen
 const NEG_TTL = 3 * 60 * 60 * 1000;      // "niet gevonden": 3 uur
-const PREFIX = "r4:";                     // nieuwe cache-versie (oude, foute resultaten vervallen)
+const PREFIX = "r5:";                     // nieuwe cache-versie (oude, foute resultaten vervallen)
 
 // ---------- titel-vergelijking: voorkomt dat een verkeerde film wordt getoond ----------
 const norm = (s) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -226,6 +226,6 @@ chrome.runtime.onInstalled.addListener(async (d) => {
   if (d.reason === "install") chrome.runtime.openOptionsPage();
   // Oude cacheversies opruimen; de nieuwe matcher gebruikt r4 en n2.
   const all = await chrome.storage.local.get(null);
-  const old = Object.keys(all).filter((k) => /^(r2:|r3:)/.test(k) || k.startsWith("n1:"));
+  const old = Object.keys(all).filter((k) => /^(r2:|r3:|r4:)/.test(k) || /^(n1:|n2:)/.test(k));
   if (old.length) chrome.storage.local.remove(old);
 });
