@@ -101,7 +101,7 @@ button{font:inherit;cursor:pointer}
 .panel summary{cursor:pointer;font-weight:600}
 .linkbtn{background:none;border:0;padding:0;color:var(--y);text-decoration:underline}
 
-@media(max-width:640px){.step{grid-template-columns:34px 1fr}.demo{grid-column:1 / -1}}
+@media(max-width:640px){.step{grid-template-columns:34px 1fr}.demo{grid-column:1 / -1}.seg button{padding:7px 9px;font-size:12px}.opt{align-items:flex-start}.opt .seg{flex-wrap:wrap;justify-content:flex-end;max-width:60%}}
 @media(prefers-reduced-motion:reduce){
   .demo *,.status *,.toast,.spin{animation:none!important}
   .type{width:14ch}.radio u b{transform:scale(1)}.tick{transform:scale(1)}.cursor{left:58%;top:62%}
@@ -173,6 +173,13 @@ button{font:inherit;cursor:pointer}
     <div class="opt"><span><span data-i18n="votes">Vote count</span><small data-i18n="votesHelp">For example, 2.9M next to the rating</small></span><label class="sw"><input type="checkbox" id="showVotes"><i></i></label></div>
     <div class="opt"><span><span data-i18n="hoverCard">Hover info card</span><small data-i18n="hoverHelp">Show poster, plot, cast and awards when hovering over a badge</small></span><label class="sw"><input type="checkbox" id="showCard"><i></i></label></div>
     <div class="opt"><span><span data-i18n="debug">Debug mode</span><small data-i18n="debugHelp">Also show badges for missing results, with details in the tooltip</small></span><label class="sw"><input type="checkbox" id="debug"><i></i></label></div>
+    <div class="opt"><span data-i18n="showCards">Filmkaartjes en vergelijkbare titels<small>Toon scores op de Netflix-kaartjes, ook bij vergelijkbare titels</small></span><label class="sw"><input type="checkbox" id="showCards"><i></i></label></div>
+    <div class="opt"><span data-i18n="showHover">Hovervoorbeelden<small>Toon de score in de grote preview wanneer je over een titel beweegt</small></span><label class="sw"><input type="checkbox" id="showHover"><i></i></label></div>
+    <div class="opt"><span data-i18n="showMain">Grote filmpagina<small>Toon de score bij de informatiepagina van een film of serie</small></span><label class="sw"><input type="checkbox" id="showMain"><i></i></label></div>
+    <div class="opt"><span data-i18n="displayStyle">Weergavestijl</span>
+      <div class="seg" id="style"><button data-v="badge" aria-pressed="false" data-i18n="styleBadge">Badge</button><button data-v="compact" aria-pressed="false" data-i18n="styleCompact">Compact</button><button data-v="minimal" aria-pressed="false" data-i18n="styleMinimal">Minimaal</button></div></div>
+    <div class="opt"><span data-i18n="playback">Tijdens het afspelen</span>
+      <div class="seg" id="playback"><button data-v="normal" aria-pressed="false" data-i18n="playbackNormal">Normaal</button><button data-v="tiny" aria-pressed="false" data-i18n="playbackTiny">Klein</button><button data-v="hide" aria-pressed="false" data-i18n="playbackHide">Verbergen</button></div></div>
     <div class="opt"><span data-i18n="size">Size</span>
       <div class="seg" id="size"><button data-v="s" aria-pressed="false" data-i18n="small">Small</button><button data-v="m" aria-pressed="false" data-i18n="normal">Medium</button><button data-v="l" aria-pressed="false" data-i18n="large">Large</button></div></div>
     <div class="preview"><div id="pv"></div><div id="pvc"></div></div>
