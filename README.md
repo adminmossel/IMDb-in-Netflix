@@ -1,6 +1,6 @@
 # IMDb ratings in Netflix
 
-<sub>Current version: **0.5.1**</sub>
+<sub>Current version: **0.5.2**</sub>
 
 A small Chrome extension that puts IMDb ratings straight onto Netflix. It also shows Rotten Tomatoes and Metascore, so you can get a quick idea of a film or series without opening three extra tabs.
 
