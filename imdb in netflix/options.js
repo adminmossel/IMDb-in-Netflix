@@ -10,7 +10,7 @@ const I18N = {
   step4Title:"Paste your key below",step4Text:"Copy the key from the email and paste it below. You can also paste the full activation link; the key will be extracted automatically.",
   yourKey:"Your API key",testSave:"Test and save",display:"Display",rottenTomatoes:"Rotten Tomatoes",rottenHelp:"Show the Rotten Tomatoes score in the badge",metaHelp:"Show the Metacritic score",
   votes:"Vote count",votesHelp:"For example, 2.9M next to the rating",hoverCard:"Hover info card",hoverHelp:"Show poster, plot, cast and awards when hovering over a badge",
-  debug:"Debug mode",debugHelp:"Also show badges for missing results, with details in the tooltip",size:"Size",small:"Small",normal:"Medium",large:"Large",
+  debug:"Debug mode",debugHelp:"Also show badges for missing results, with details in the tooltip",size:"Size",small:"Small",normal:"Medium",large:"Large",displayStyle:"Display style",styleBadge:"Full badge",styleCompact:"Compact text",styleMinimal:"Minimal",playback:"While watching",playbackNormal:"Normal",playbackTiny:"Tiny",playbackHide:"Hide",showCards:"Title cards and similar titles<small>Show ratings on Netflix cards, including similar-title rows</small>",showHover:"Hover previews<small>Show a rating on the large preview when hovering over a title</small>",showMain:"Title information page<small>Show the rating on a film or series information page</small>",
   troubleshooting:"Troubleshooting",diagnoseTitle:"Diagnosis: why aren’t ratings showing?",diagnoseHelp:"Test the connection and look up a title (use the title and year as shown on Netflix). Share the result if it doesn’t work.",
   startDiagnosis:"Run diagnosis",cacheHelp:"Ratings incorrect or outdated?",clearCache:"Clear cache",refreshNetflix:"and refresh Netflix.",
   missingHint:"Seeing “–” for a title? Some titles may not be found, especially when Netflix uses a localized title. The extension prefers showing no score over displaying a rating for the wrong movie or series.",
@@ -30,7 +30,7 @@ const I18N = {
   step4Title:"Plak je key hieronder",step4Text:"Kopieer de key uit de e-mail en plak hem hieronder. Je kunt ook de volledige activatielink plakken; de key wordt automatisch eruit gehaald.",
   yourKey:"Jouw API-key",testSave:"Testen en opslaan",display:"Weergave",rottenTomatoes:"Rotten Tomatoes",rottenHelp:"Toon de Rotten Tomatoes-score in de badge",metaHelp:"Toon de Metacritic-score",
   votes:"Aantal stemmen",votesHelp:"Bijvoorbeeld 2,9M naast de score",hoverCard:"Infokaart bij hover",hoverHelp:"Toon poster, plot, cast en awards wanneer je over een badge beweegt",
-  debug:"Foutopsporing",debugHelp:"Toon ook badges bij ontbrekende resultaten, met uitleg in de tooltip",size:"Grootte",small:"Klein",normal:"Normaal",large:"Groot",
+  debug:"Foutopsporing",debugHelp:"Toon ook badges bij ontbrekende resultaten, met uitleg in de tooltip",size:"Grootte",small:"Klein",normal:"Normaal",large:"Groot",displayStyle:"Weergavestijl",styleBadge:"Volledige badge",styleCompact:"Compacte tekst",styleMinimal:"Minimaal",playback:"Tijdens het afspelen",playbackNormal:"Normaal",playbackTiny:"Klein",playbackHide:"Verbergen",showCards:"Filmkaartjes en vergelijkbare titels<small>Toon scores op Netflix-kaartjes, ook bij vergelijkbare titels</small>",showHover:"Hovervoorbeelden<small>Toon de score in de grote preview wanneer je over een titel beweegt</small>",showMain:"Grote filmpagina<small>Toon de score op de informatiepagina van een film of serie</small>",
   troubleshooting:"Problemen oplossen",diagnoseTitle:"Diagnose: waarom zie ik geen scores?",diagnoseHelp:"Test de verbinding en zoek een titel op (gebruik de titel en het jaar zoals Netflix die toont). Deel het resultaat als het niet werkt.",
   startDiagnosis:"Diagnose starten",cacheHelp:"Klopt een score niet of is die verouderd?",clearCache:"Cache legen",refreshNetflix:"en vernieuw Netflix.",
   missingHint:"Zie je “–” bij een titel? Sommige titels worden niet gevonden, vooral wanneer Netflix een vertaalde titel gebruikt. De extensie toont liever geen score dan een score van de verkeerde film of serie.",
@@ -68,7 +68,7 @@ $("langEn").addEventListener("click", async () => { setLanguage("en"); await chr
 $("langNl").addEventListener("click", async () => { setLanguage("nl"); await chrome.storage.sync.set({language:"nl"}); });
 chrome.storage.sync.get(["language"]).then(d => setLanguage(d.language || "en"));
 
-const DEF = { showMeta: true, showRT: true, showVotes: false, showCard: true, size: "m", debug: false };
+const DEF = { showMeta: true, showRT: true, showVotes: false, showCard: true, showCards: true, showHover: true, showMain: true, size: "m", style: "badge", playbackMode: "tiny", debug: false };
 let S = { ...DEF };
 const SAMPLE = {
   rating: 8.1, rt: 92, metascore: "74", votes: "1,234,567", id: "tt0000000",
@@ -110,8 +110,10 @@ function renderPreview() {
   $("pvc").replaceChildren(...(S.showCard ? [IMDbUI.buildCard(SAMPLE)] : []));
 }
 function syncUI() {
-  ["showRT", "showMeta", "showVotes", "showCard", "debug"].forEach((k) => ($(k).checked = !!S[k]));
+  ["showRT", "showMeta", "showVotes", "showCard", "showCards", "showHover", "showMain", "debug"].forEach((k) => ($(k).checked = !!S[k]));
   document.querySelectorAll("#size button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === S.size)));
+  document.querySelectorAll("#style button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === S.style)));
+  document.querySelectorAll("#playback button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === S.playbackMode)));
   renderPreview();
 }
 async function save(patch) {
@@ -120,8 +122,10 @@ async function save(patch) {
   syncUI();
   toast(tr("saved"));
 }
-["showRT", "showMeta", "showVotes", "showCard", "debug"].forEach((k) => $(k).addEventListener("change", (e) => save({ [k]: e.target.checked })));
+["showRT", "showMeta", "showVotes", "showCard", "showCards", "showHover", "showMain", "debug"].forEach((k) => $(k).addEventListener("change", (e) => save({ [k]: e.target.checked })));
 $("size").addEventListener("click", (e) => { const v = e.target.dataset && e.target.dataset.v; if (v) save({ size: v }); });
+$("style").addEventListener("click", (e) => { const v = e.target.dataset && e.target.dataset.v; if (v) save({ style: v }); });
+$("playback").addEventListener("click", (e) => { const v = e.target.dataset && e.target.dataset.v; if (v) save({ playbackMode: v }); });
 
 // ---------- key testen en opslaan ----------
 const ICON = {
@@ -181,7 +185,7 @@ $("eye").addEventListener("click", () => {
 // ---------- cache leegmaken ----------
 $("clear").addEventListener("click", async () => {
   const all = await chrome.storage.local.get(null);
-  const keys = Object.keys(all).filter((k) => /^r\d+:/.test(k));
+  const keys = Object.keys(all).filter((k) => /^(r|n)\d+:/.test(k));
   await chrome.storage.local.remove(keys);
   toast(tr("cacheCleared", {count:keys.length}));
 });
