@@ -67,93 +67,97 @@ function nfLimit(fn) {
 }
 function nfPump() { while (nfActive < 3 && nfQueue.length) { nfActive++; nfQueue.shift()(); } }
 
-const nfWhy = new Map();   // id -> reden waarom de Netflix-titelpagina niets opleverde
+const nfWhy = new Map();
 async function netflixInfo(id) {
-  // Netflix kan voor /title/ en /watch/ verschillende server-rendered metadata geven.
-  // Vergelijk beide op metadata-inhoud; HTML-lengte alleen is geen betrouwbare maat.
-  const fetchHtml = async (path) => {
+  const fetchPage = async (path) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
     try {
       const response = await fetch(path + id, { credentials: "include", signal: controller.signal });
-      return response.ok ? await response.text() : null;
+      if (!response.ok) return null;
+      const finalId = idOf(response.url);
+      if (finalId && finalId !== id) return null;
+      return await response.text();
     } catch (e) {
       nfWhy.set(id, "fetch-fout: " + (e && e.message || "onbekend"));
       return null;
     } finally { clearTimeout(timeout); }
   };
-  const titleHtml = await fetchHtml("/title/");
-  const watchHtml = await fetchHtml("/watch/");
-  const metadataScore = (html) => {
-    if (!html) return -1;
-    return (html.match(/application\/ld\+json/gi) || []).length * 5 +
-      (html.match(/og:title|name="title"/gi) || []).length * 3 +
-      (html.match(/titleType|videoType|releaseYear|datePublished/gi) || []).length * 2;
-  };
-  const html = metadataScore(watchHtml) > metadataScore(titleHtml) ? watchHtml : (titleHtml || watchHtml);
-  if (!html) { nfWhy.set(id, nfWhy.get(id) || "Netflix gaf geen titelpagina terug"); return null; }
 
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  const typed = [];
-  const aliases = [];
-  const addAlias = (v) => {
-    if (typeof v !== "string") return;
-    const x = cleanTitle(v);
-    if (x && x.length < 100 && !aliases.some((a) => a.toLowerCase() === x.toLowerCase())) aliases.push(x);
-  };
-  const visit = (node) => {
-    if (!node) return;
-    if (Array.isArray(node)) { node.forEach(visit); return; }
-    if (typeof node !== "object") return;
-    const schemaTypes = [].concat(node["@type"] || []).map(x => String(x));
-    const series = schemaTypes.some(x => /TVSeries|TVMiniSeries|CreativeWorkSeries/i.test(x));
-    const movie = schemaTypes.some(x => /\bMovie\b/i.test(x));
-    // Koppel naam, jaar en type uitsluitend binnen hetzelfde schema-object.
-    // Eerder lekte een globale mediaType naar willekeurige geneste objecten,
-    // waardoor bijvoorbeeld de naam van een andere entiteit als filmtitel kon gelden.
-    if (series || movie) {
-      const name = cleanTitle(node.name || node.headline);
-      if (name) {
-        const date = String(node.datePublished || node.dateCreated || node.startDate || node.copyrightYear || "").match(/\d{4}/)?.[0] || null;
-        typed.push({ title: name, mediaType: series ? "series" : "movie", year: date ? +date : null });
-        addAlias(node.alternateName);
-        addAlias(node.alternateHeadline);
-      }
-    }
-    for (const [key, value] of Object.entries(node)) {
-      if (key !== "@context" && value && typeof value === "object") visit(value);
-    }
-  };
-  for (const script of doc.querySelectorAll('script[type="application/ld+json"]')) {
-    try { visit(JSON.parse(script.textContent)); } catch {}
-  }
-  const ogType = doc.querySelector('meta[property="og:type"]')?.content || "";
-  const rawType = (html.match(/"(?:titleType|videoType)"\s*:\s*"(movie|series|tvSeries|tvMiniSeries)"/i) || [])[1];
-  const fallbackType = /tv|series|show/i.test(ogType) || /series/i.test(rawType || "") ? "series"
-    : /movie|film/i.test(ogType) || /movie/i.test(rawType || "") ? "movie" : null;
-
-  // Schema.org met een expliciet Movie/TVSeries-type is leidend.
-  const best = typed.find(x => x.year) || typed[0] || null;
-  const title = best?.title || cleanTitle(
-    doc.querySelector('meta[property="og:title"]')?.content ||
-    doc.querySelector('meta[name="title"]')?.content ||
-    doc.querySelector("h1")?.textContent ||
-    doc.title
-  );
-  if (!title) {
-    nfWhy.set(id, "geen titel in Netflix-metadata (paginatitel: " + (doc.title || "leeg") + ")");
+  const [titleHtml, watchHtml] = await Promise.all([fetchPage("/title/"), fetchPage("/watch/")]);
+  const pages = [titleHtml, watchHtml].filter(Boolean);
+  if (!pages.length) {
+    nfWhy.set(id, nfWhy.get(id) || "Netflix gaf geen metadata voor deze titel-ID");
     return null;
   }
-  const year = best?.year || parseInt((html.match(/"releaseYear"\s*:\s*(\d{4})/) || [])[1], 10) || null;
-  const mediaType = best?.mediaType || fallbackType;
-  return { title, aliases, year, mediaType };
+
+  const refersToId = (value) => {
+    if (typeof value !== "string") return false;
+    if (value === id) return true;
+    return new RegExp("/(?:title|watch)/" + id + "(?:[/?#]|$)").test(value);
+  };
+  const pageInfo = (html) => {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const typed = [];
+    const visit = (node) => {
+      if (!node) return;
+      if (Array.isArray(node)) { node.forEach(visit); return; }
+      if (typeof node !== "object") return;
+      const types = [].concat(node["@type"] || []).map(x => String(x));
+      const isSeries = types.some(x => /^(TVSeries|TVMiniSeries|CreativeWorkSeries)$/i.test(x));
+      const isMovie = types.some(x => /^Movie$/i.test(x));
+      if (isSeries || isMovie) {
+        const refs = [node.url, node["@id"], node.mainEntityOfPage]
+          .flatMap(v => typeof v === "object" && v ? [v.url, v["@id"]] : [v]);
+        const exact = refs.some(refersToId);
+        if (exact) {
+          const name = cleanTitle(node.name || node.headline);
+          if (name) {
+            const date = String(node.datePublished || node.dateCreated || node.startDate || node.copyrightYear || "").match(/\d{4}/)?.[0] || null;
+            const aliases = [node.alternateName, node.alternateHeadline]
+              .flatMap(x => Array.isArray(x) ? x : [x])
+              .map(cleanTitle).filter(Boolean);
+            typed.push({ title: name, year: date ? +date : null, mediaType: isSeries ? "series" : "movie", aliases });
+          }
+        }
+      }
+      for (const [key, value] of Object.entries(node)) {
+        if (key !== "@context" && value && typeof value === "object") visit(value);
+      }
+    };
+    for (const script of doc.querySelectorAll('script[type="application/ld+json"]')) {
+      try { visit(JSON.parse(script.textContent)); } catch {}
+    }
+
+    const exact = typed.find(x => x.year) || typed[0] || null;
+    const ogTitle = cleanTitle(doc.querySelector('meta[property="og:title"]')?.content);
+    const metaTitle = cleanTitle(doc.querySelector('meta[name="title"]')?.content);
+    const title = exact?.title || ogTitle || metaTitle;
+    const ogType = doc.querySelector('meta[property="og:type"]')?.content || "";
+    const mediaType = exact?.mediaType || (/tv|series|show/i.test(ogType) ? "series" : /movie|film/i.test(ogType) ? "movie" : null);
+    if (!title) return null;
+    return {
+      title,
+      aliases: exact?.aliases || [],
+      year: exact?.year || null,
+      mediaType
+    };
+  };
+
+  // De /title/{id}-pagina is de primaire bron. /watch/{id} is alleen een reserve.
+  for (const html of pages) {
+    const result = pageInfo(html);
+    if (result) return result;
+  }
+  nfWhy.set(id, "Netflix-pagina bevat geen titelmetadata die aan deze titel-ID gekoppeld kon worden");
+  return null;
 }
 
 const idCache = new Map();
 function infoFromId(id) {
   if (!idCache.has(id)) {
     idCache.set(id, (async () => {
-      const k = "n6:" + id;
+      const k = "n7:" + id;
       try {
         const st = (await chrome.storage.local.get([k]))[k];
         if (st && Date.now() - st.t < 30 * 864e5) return st.v;
@@ -185,97 +189,136 @@ function domTitles(host) {
   return out;
 }
 
-const resById = new Map();   // id -> herbruikbaar resultaat, ook als er geen rating is
+const resById = new Map();
 const pendingById = new Map();
 
-async function lookup(id, host, extra) {
+async function lookup(id) {
   if (resById.has(id)) return resById.get(id);
   if (pendingById.has(id)) return pendingById.get(id);
-  const p = lookup1(id, host, extra).then((r) => {
-    if (r && !["fetch", "ctx"].includes(r.error)) resById.set(id, r);
-    return r;
+  const p = lookup1(id).then((result) => {
+    if (!result || !["fetch", "ctx"].includes(result.error)) resById.set(id, result);
+    return result;
   }).finally(() => pendingById.delete(id));
   pendingById.set(id, p);
   return p;
 }
-async function lookup1(id, host, extra) {
+
+async function lookup1(id) {
   const info = await infoFromId(id);
-  const yr = info && info.year;
-  const mediaType = info && info.mediaType;
-  const cands = [];
-  const push = (t, src, y) => {
-    t = cleanTitle(t);
-    if (t && !cands.some((c) => c.t.toLowerCase() === t.toLowerCase())) cands.push({ t, src, y });
-  };
-  if (info && info.title) push(info.title, "netflix-pagina", yr);
-  (info && info.aliases || []).forEach((t) => push(t, "alternatieve-titel", yr));
-  domTitles(host).forEach((t) => push(t, "pagina-dom", yr));
-  (extra || []).forEach((t) => push(t, "pagina-meta", yr));
-  const why = nfWhy.get(id) || "";
-  if (!cands.length) return { rating: null, dbg: { q: "(geen titel gevonden)", y: null, steps: ["id " + id, "netflix: " + (why || "onbekend")] } };
-  let fallback = null;
-  for (const c of cands.slice(0, 6)) {
-    const r = await ask(c.t, c.y, mediaType);
-    if (r.error) return r;
-    if (r.rating != null) return r;
-    if (r.id && !fallback) {
-      fallback = { ...r, dbg: { ...(r.dbg || { q: c.t, y: c.y, steps: [] }), steps: [...((r.dbg && r.dbg.steps) || []), "bron:" + c.src] } };
+  if (!info || !info.title) {
+    return { rating: null, dbg: { q: "(geen betrouwbare Netflix-titel)", y: null, steps: ["id " + id, "netflix: " + (nfWhy.get(id) || "geen titelmetadata")] } };
+  }
+
+  const candidates = [info.title, ...(info.aliases || [])]
+    .map(cleanTitle)
+    .filter((title, index, all) => title && all.findIndex(x => x.toLowerCase() === title.toLowerCase()) === index);
+
+  for (const title of candidates) {
+    const result = await ask(title, info.year, info.mediaType);
+    if (result.error) return result;
+    const rating = Number(result.rating);
+    if (result.verified === true && Number.isFinite(rating) && rating >= 0 && rating <= 10 && /^tt\d{5,}$/.test(result.id || "")) {
+      return result;
     }
   }
-  return fallback || { rating: null, dbg: { q: cands[0].t, y: cands[0].y, steps: ["Geen betrouwbare match gevonden", ...cands.slice(0, 6).map((c) => "titelbron:" + c.src)] } };
+  return {
+    rating: null,
+    dbg: { q: info.title, y: info.year, steps: ["Geen unieke, bevestigde IMDb-match", "type:" + (info.mediaType || "onbekend"), "Netflix-ID:" + id] }
+  };
 }
 
 // ---------- hover-infokaart ----------
-let card;
-function hideCard() { if (card) { card.remove(); card = null; } }
+let card = null;
+let cardBadge = null;
+let cardHideTimer = null;
+
+function cancelCardHide() {
+  if (cardHideTimer) clearTimeout(cardHideTimer);
+  cardHideTimer = null;
+}
+function hideCard() {
+  cancelCardHide();
+  if (card) card.remove();
+  card = null;
+  cardBadge = null;
+}
+function scheduleHideCard() {
+  cancelCardHide();
+  cardHideTimer = setTimeout(() => {
+    const badgeHovered = cardBadge && cardBadge.matches(":hover");
+    const cardHovered = card && card.matches(":hover");
+    if (!badgeHovered && !cardHovered) hideCard();
+  }, 450);
+}
 function showCard(badge, res) {
+  if (!S.showCard || !isVerifiedRating(res)) return;
+  cancelCardHide();
+  if (card && card.isConnected && cardBadge === badge) return;
   hideCard();
   card = UI.buildCard(res, S.language);
+  cardBadge = badge;
   document.body.appendChild(card);
-  card.addEventListener("mouseleave", hideCard);
-  if (S.trailerEnabled && res && res.verified && res.id) {
-    const currentCard=card;
-    chrome.runtime.sendMessage({type:"trailer",imdbId:res.id,title:res.title,year:res.year,mediaType:res.type==="series"?"series":"movie"})
-      .then(trailer=>{if(trailer&&card===currentCard&&currentCard.isConnected)UI.addTrailer(currentCard,trailer,S.language);}).catch(()=>{});
+  card.addEventListener("mouseenter", cancelCardHide);
+  card.addEventListener("mouseleave", scheduleHideCard);
+  if (S.trailerEnabled && res.id) {
+    const currentCard = card;
+    chrome.runtime.sendMessage({ type: "trailer", imdbId: res.id, title: res.title, year: res.year, mediaType: res.type === "series" ? "series" : "movie" })
+      .then(trailer => {
+        if (trailer && card === currentCard && currentCard.isConnected) UI.addTrailer(currentCard, trailer, S.language);
+      }).catch(() => {});
   }
+
   const r = badge.getBoundingClientRect();
   const w = card.offsetWidth, h = card.offsetHeight;
-  const left = Math.min(r.left, window.innerWidth - w - 10);
-  let top = r.bottom + 6;
-  if (top + h > window.innerHeight - 10) top = Math.max(10, r.top - h - 6);
-  card.style.left = Math.max(10, left) + "px";
+  const left = Math.max(10, Math.min(r.left, window.innerWidth - w - 10));
+  let top = r.bottom;
+  if (top + h > window.innerHeight - 10) top = Math.max(10, r.top - h);
+  card.style.left = left + "px";
   card.style.top = top + "px";
 }
 window.addEventListener("scroll", hideCard, { passive: true });
 
+function isVerifiedRating(res) {
+  const rating = Number(res && res.rating);
+  return !!(res && res.verified === true && Number.isFinite(rating) && rating >= 0 && rating <= 10 && /^tt\d{5,}$/.test(res.id || ""));
+}
+
 function build(res, size, extra) {
-  const displayRes = res && !S.debug ? { ...res, dbg: null } : res;
+  if (!isVerifiedRating(res)) return null;
+  const displayRes = { ...res, dbg: S.debug ? res.dbg : null };
   const b = UI.makeBadge(displayRes, { ...S, size: size || S.size }, hooks);
   if (extra) b.classList.add(extra);
-  if (res && S.showCard && (res.rating != null || res.id || res.title || res.plot)) {
+  if (S.showCard) {
     b.addEventListener("mouseenter", () => showCard(b, res));
-    b.addEventListener("mouseleave", e => { if (!card || !card.contains(e.relatedTarget)) hideCard(); });
+    b.addEventListener("mouseleave", scheduleHideCard);
   }
   return b;
 }
 
-// Zet een badge in `host` voor Netflix-id `id`. Mislukte opzoekingen blijven stil (tenzij Foutopsporing aan staat).
+// Alleen een badge plaatsen wanneer een score echt aan een IMDb-ID is bevestigd.
+// Geen laad-balkjes of "geen score"-labels over de hele Netflix-pagina.
 function render(host, id, extra) {
+  if (!host || !id) return;
+  if (host.dataset.imdbId === id && (host.querySelector(":scope > .imdb-badge") || host.dataset.imdbNoRating === id)) return;
   host.querySelector(":scope > .imdb-badge")?.remove();
   host.dataset.imdbId = id;
-  delete host.dataset.imdbFail;
+  delete host.dataset.imdbNoRating;
   if (getComputedStyle(host).position === "static") host.style.position = "relative";
-  host.appendChild(UI.makeBadge({ loading: true }, S));
-  lookup(id, host).then((res) => {
+
+  lookup(id).then((res) => {
     if (host.dataset.imdbId !== id) return;
     host.querySelector(":scope > .imdb-badge")?.remove();
-    host.appendChild(build(res, null, extra));
+    const badge = build(res, null, extra);
+    if (badge) host.appendChild(badge);
+    else host.dataset.imdbNoRating = id;
   }).catch(() => {
-    if (host.dataset.imdbId !== id) return;
-    host.querySelector(":scope > .imdb-badge")?.remove();
-    host.appendChild(build({ error: "fetch" }, null, extra));
+    if (host.dataset.imdbId === id) {
+      host.querySelector(":scope > .imdb-badge")?.remove();
+      host.dataset.imdbNoRating = id;
+    }
   });
 }
+
 const inView = (r) => r.right > -300 && r.left < innerWidth + 300 && r.bottom > -300 && r.top < innerHeight + 300;
 
 // ---------- badges op de kaartjes in de rijen ----------
@@ -332,67 +375,68 @@ function scanHover() {
         const ids = new Set([...c.querySelectorAll('a[href*="/watch/"], a[href*="/title/"]')]
           .map((x) => idOf(x.getAttribute("href"))).filter(Boolean));
         if (ids.size > 1) break;
-        best = c;
+        if (ids.size === 1) best = c;
       }
     }
     if (!best || best.querySelector(".imdb-main")) return;
     const link = best.querySelector('a[href*="/watch/"], a[href*="/title/"]') || (el.matches("a[href]") ? el : null);
     const id = idOf(link && link.getAttribute("href"));
     if (!id) return;
-    if (best.dataset.imdbFail === id) return;
-    if (best.dataset.imdbId === id && best.querySelector(":scope > .imdb-badge")) return;
+    if (best.dataset.imdbId === id && (best.querySelector(":scope > .imdb-badge") || best.dataset.imdbNoRating === id)) return;
     best.dataset.imdbHover = "1";
     best.querySelectorAll("a > .imdb-badge").forEach((b) => b.remove());   // geen dubbele badge
     render(best, id, "imdb-hover");
   });
 }
 
-// ---------- grote badge op de titelpagina / modal ----------
+// ---------- grote badge op een echte titelpagina ----------
 function currentId() {
-  const u = new URL(location.href);
-  return u.searchParams.get("jbv") || idOf(location.pathname);
+  // Geen jbv-queryparameter gebruiken: die kan op browse-/previewpagina's wisselen.
+  const match = location.pathname.match(/^\/title\/(\d{5,})(?:\/|$)/);
+  return match ? match[1] : null;
 }
 function place(badge) {
-  // kies de grootste zichtbare Play-knop (niet zomaar de eerste in de pagina)
-  const area = (el) => { const r = el.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight ? r.width * r.height : 0; };
-  const play = [...document.querySelectorAll('[data-uia="play-button"], a[href*="/watch/"], button')]
+  const area = (el) => {
+    const r = el.getBoundingClientRect();
+    return r.bottom > 0 && r.top < innerHeight ? r.width * r.height : 0;
+  };
+  const play = [...document.querySelectorAll('[data-uia="play-button"], button, a[href*="/watch/"]')]
     .filter((el) => el.offsetParent && !el.querySelector("img") && (el.textContent || "").length < 30 &&
-                    /play|next episode|afspelen|volgende/i.test(el.textContent || "") && area(el) > 0)
+      /play|next episode|afspelen|volgende/i.test(el.textContent || "") && area(el) > 0)
     .sort((a, b) => area(b) - area(a))[0];
+
   if (play && play.parentElement) {
     badge.classList.add("imdb-inline");
     play.parentElement.appendChild(badge);
-  } else {
-    badge.classList.add("imdb-float");
-    document.body.appendChild(badge);
+    return true;
   }
+  const heading = document.querySelector('h1, [data-uia="video-title"]');
+  if (heading && heading.isConnected) {
+    badge.classList.add("imdb-main-inline");
+    heading.insertAdjacentElement("afterend", badge);
+    return true;
+  }
+  return false;
 }
 const BIGGER = { s: "m", m: "l", l: "xl" };
-let pending = null;
+let pendingMain = null;
 async function updateMain() {
   const id = currentId();
   const existing = document.querySelector(".imdb-main");
   if (!S.showMain || !id) { existing?.remove(); return; }
   if (existing && existing.dataset.id === id && existing.isConnected) return;
   existing?.remove();
-  if (pending === id) return;
-  pending = id;
-  const meta = /^\/title\//.test(location.pathname)
-    ? [document.querySelector('meta[property="og:title"]')?.content, document.title] : [];
-  const loader = UI.makeBadge({ loading: true }, { ...S, size: BIGGER[S.size] || "l" });
-  loader.classList.add("imdb-main");
-  loader.dataset.id = id;
-  place(loader);
-  let res;
-  try { res = await lookup(id, document.querySelector('[role="dialog"], .previewModal--info, .detail-modal'), meta); }
-  catch { res = { error: "fetch" }; }
-  pending = null;
-  if (!S.showMain || currentId() !== id) return;
-  document.querySelector(".imdb-main")?.remove();
+  if (pendingMain === id) return;
+  pendingMain = id;
+  let res = null;
+  try { res = await lookup(id); } catch {}
+  finally { if (pendingMain === id) pendingMain = null; }
+  if (!S.showMain || currentId() !== id || !isVerifiedRating(res)) return;
   const badge = build(res, BIGGER[S.size] || "l");
+  if (!badge) return;
   badge.classList.add("imdb-main");
   badge.dataset.id = id;
-  place(badge);
+  if (!place(badge)) badge.remove();
 }
 
 function syncPlayback() {
