@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "IMDb Rating voor Netflix",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Toont aanpasbare IMDb-, Rotten Tomatoes- en Metascore-ratings op Netflix.",
   "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
   "permissions": ["storage"],
