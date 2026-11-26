@@ -1,5 +1,6 @@
 
-const $ = (id) => document.getElementById(id);\nconst I18N = {
+const $ = (id) => document.getElementById(id);
+const I18N = {
  en: {
   pageTitle:"See IMDb ratings on every Netflix title",lead:"This extension adds IMDb, Rotten Tomatoes and Metascore ratings to Netflix title cards. Hover over a badge to see the poster, plot and cast. A free API key is required to retrieve ratings.",
   getKey:"Get a free API key",keyIntro:"It takes about two minutes and is free. The free OMDb plan includes 1,000 requests per day. Ratings are cached for a week to reduce requests.",
@@ -169,10 +170,12 @@ $("save").addEventListener("click", async () => {
   else status("warn", tr("savedTestFailed", {reason:r === "network" ? tr("noConnection") : tr("unknownError")}));
 });
 $("key").addEventListener("keydown", (e) => e.key === "Enter" && $("save").click());
-$("eye").dataset.visible = "false";\n$("eye").addEventListener("click", () => {
+$("eye").dataset.visible = "false";
+$("eye").addEventListener("click", () => {
   const show = $("key").type === "password";
   $("key").type = show ? "text" : "password";
-  $("eye").dataset.visible = String(show);\n  $("eye").textContent = tr(show ? "hide" : "show");
+  $("eye").dataset.visible = String(show);
+  $("eye").textContent = tr(show ? "hide" : "show");
   $("eye").setAttribute("aria-pressed", String(show));
 });
 
@@ -212,7 +215,9 @@ $("diag").addEventListener("click", async () => {
     const bg = await chrome.runtime.sendMessage({ type: "rating", title: dq, year: dy, nocache: true });
     L.push("Extensie voor \"" + dq + "\": " + JSON.stringify(bg).slice(0, 500));
   } catch (e) { L.push(tr("fetchError") + e.message); }
-  out.textContent = L.join("\n\n");
+  out.textContent = L.join("
+
+");
 });
 
 $("ver").textContent = "Versie " + chrome.runtime.getManifest().version;
