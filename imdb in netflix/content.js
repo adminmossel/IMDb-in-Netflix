@@ -312,7 +312,7 @@ async function updateMain() {
   try { res = await lookup(id, document.querySelector('[role="dialog"], .previewModal--info, .detail-modal'), meta); }
   catch { res = { error: "fetch" }; }
   pending = null;
-  if (currentId() !== id) return;
+  if (!S.showMain || currentId() !== id) return;
   document.querySelector(".imdb-main")?.remove();
   const badge = build(res, BIGGER[S.size] || "l");
   badge.classList.add("imdb-main");
