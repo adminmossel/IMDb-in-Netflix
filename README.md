@@ -1,6 +1,6 @@
 # IMDb ratings in Netflix with trailers
 
-<sub>Current version: **0.5.2**</sub>
+<sub>Current version: **0.5.3**</sub>
 
 A small Chrome extension that puts IMDb ratings straight onto Netflix. It also shows Rotten Tomatoes and Metascore, so you can get a quick idea of a film or series without opening three extra tabs.
 
@@ -8,7 +8,7 @@ I made this for my own Netflix browsing and kept adding the bits I wanted to see
 
 ## What it does
 
-- Adds ratings to Netflix title cards, hover previews and the main title information page. It also scans the **More Like This** row and other similar-title rows as they appear while scrolling.
+- Adds ratings to Netflix title cards, hover previews and the main title information page. It also scans the **More Like This** row and other similar-title rows as they appear while scrolling, including cards where Netflix places the title link and poster in separate elements.
 - Keeps a small IMDb label visible even when there is no IMDb rating, and still shows Rotten Tomatoes or Metascore when either is available.
 - Lets you hover over a rating to see more: poster, plot, genre, director, cast, awards and box office.
 - Can show the vote count next to the IMDb score.
