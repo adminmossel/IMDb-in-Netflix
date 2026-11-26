@@ -20,11 +20,11 @@ function sim(a, b) {
 }
 
 function yearCompatible(candidateYear, requestedYear) {
-  const a = parseInt(String(candidateYear || "").match(/\\d{4}/)?.[0], 10);
-  const b = parseInt(String(requestedYear || "").match(/\\d{4}/)?.[0], 10);
-  // Als Netflix een jaar levert, accepteren we geen titel uit een ander jaar.
-  // Een verschil van één jaar veroorzaakte aantoonbaar verwisselingen bij gelijknamige titels.
-  return !a || !b || a === b;
+  const a = parseInt(String(candidateYear || "").match(/\d{4}/)?.[0], 10);
+  const b = parseInt(String(requestedYear || "").match(/\d{4}/)?.[0], 10);
+  // Netflix- en IMDb-jaartallen kunnen één jaar verschillen door release-/premièredatum.
+  // Een verschil van meer dan één jaar blijft een harde afwijzing.
+  return !a || !b || Math.abs(a - b) <= 1;
 }
 
 function typeCompatible(candidateType, requestedType) {
