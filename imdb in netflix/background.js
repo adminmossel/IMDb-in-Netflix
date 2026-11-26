@@ -224,7 +224,7 @@ chrome.runtime.onMessage.addListener((msg, _s, send) => {
 
 chrome.runtime.onInstalled.addListener(async (d) => {
   if (d.reason === "install") chrome.runtime.openOptionsPage();
-  // Oude cacheversies opruimen; de nieuwe matcher gebruikt r4 en n2.
+  // Oude cacheversies opruimen; de nieuwe matcher gebruikt r5 en n3.
   const all = await chrome.storage.local.get(null);
   const old = Object.keys(all).filter((k) => /^(r2:|r3:|r4:)/.test(k) || /^(n1:|n2:)/.test(k));
   if (old.length) chrome.storage.local.remove(old);
