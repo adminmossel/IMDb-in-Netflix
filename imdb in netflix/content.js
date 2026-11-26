@@ -105,6 +105,11 @@ async function netflixInfo(id) {
   }
   t = cleanTitle(t || doc.querySelector('meta[property="og:title"]')?.content || doc.title);
   if (!t) { nfWhy.set(id, "geen titel in pagina (titel: " + (doc.title || "leeg") + ")"); return null; }
+  const ogType = doc.querySelector('meta[property="og:type"]')?.content || "";
+  if (!mediaType && /tv|series|show/i.test(ogType)) mediaType = "series";
+  else if (!mediaType && /movie|film/i.test(ogType)) mediaType = "movie";
+  const rawType = (html.match(/"(?:titleType|videoType)"\s*:\s*"(movie|series|tvSeries|tvMiniSeries)"/i) || [])[1];
+  if (!mediaType && rawType) mediaType = /series/i.test(rawType) ? "series" : "movie";
   const y = ly || (html.match(/"releaseYear"\s*:\s*(\d{4})/) || [])[1];
   return { title: t, aliases, year: y ? +y : null, mediaType };
 }
@@ -331,9 +336,11 @@ async function updateMain() {
 }
 
 function syncPlayback() {
+  const fullscreen = !!document.fullscreenElement;
   const playing = [...document.querySelectorAll("video")].some((v) => {
     const r = v.getBoundingClientRect();
-    return !v.paused && v.readyState >= 2 && r.width > 120 && r.height > 70;
+    const mainPlayer = r.width >= innerWidth * 0.65 && r.height >= innerHeight * 0.42;
+    return !v.paused && v.readyState >= 2 && (fullscreen || mainPlayer);
   });
   document.documentElement.classList.toggle("imdb-playback-tiny", playing && S.playbackMode === "tiny");
   document.documentElement.classList.toggle("imdb-playback-hidden", playing && S.playbackMode === "hide");
