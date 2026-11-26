@@ -160,9 +160,9 @@ button{font:inherit;cursor:pointer}
     <h3 data-i18n="yourKey">Your API key</h3>
     <div class="inp">
       <input id="key" type="password" placeholder="bijvoorbeeld a1b2c3d4" autocomplete="off" spellcheck="false" aria-label="OMDb API key">
-      <button id="eye" class="ghost" type="button" aria-pressed="false">Tonen</button>
+      <button id="eye" class="ghost" type="button" aria-pressed="false">Show</button>
     </div>
-    <button id="save" class="primary" type="button"><span class="lbl">Testen en opslaan</span><span class="spin"></span></button>
+    <button id="save" class="primary" type="button"><span class="lbl" data-i18n="testSave">Test and save</span><span class="spin"></span></button>
     <div id="status" class="status" role="status"></div>
   </section>
 
@@ -174,7 +174,7 @@ button{font:inherit;cursor:pointer}
     <div class="opt"><span><span data-i18n="hoverCard">Hover info card</span><small data-i18n="hoverHelp">Show poster, plot, cast and awards when hovering over a badge</small></span><label class="sw"><input type="checkbox" id="showCard"><i></i></label></div>
     <div class="opt"><span><span data-i18n="debug">Debug mode</span><small data-i18n="debugHelp">Also show badges for missing results, with details in the tooltip</small></span><label class="sw"><input type="checkbox" id="debug"><i></i></label></div>
     <div class="opt"><span data-i18n="size">Size</span>
-      <div class="seg" id="size"><button data-v="s" aria-pressed="false">Klein</button><button data-v="m" aria-pressed="false">Normaal</button><button data-v="l" aria-pressed="false">Groot</button></div></div>
+      <div class="seg" id="size"><button data-v="s" aria-pressed="false" data-i18n="small">Small</button><button data-v="m" aria-pressed="false" data-i18n="normal">Medium</button><button data-v="l" aria-pressed="false" data-i18n="large">Large</button></div></div>
     <div class="preview"><div id="pv"></div><div id="pvc"></div></div>
   </section>
 
@@ -182,7 +182,7 @@ button{font:inherit;cursor:pointer}
   <details class="panel"><summary data-i18n="diagnoseTitle">Diagnosis: why aren’t ratings showing?</summary>
     <p style="margin-top:12px" data-i18n="diagnoseHelp">Test the connection and look up a title (use the title and year as shown on Netflix). Share the result if it doesn’t work.</p>
     <div class="inp"><input id="dq" value="Turning Point: The Vietnam War" aria-label="Titel"><input id="dy" value="2025" style="max-width:90px" aria-label="Jaar"></div>
-    <button id="diag" class="primary" type="button">Diagnose starten</button>
+    <button id="diag" class="primary" type="button" data-i18n="startDiagnosis">Run diagnosis</button>
     <pre id="diagOut" style="white-space:pre-wrap;word-break:break-all;margin:14px 0 0;color:var(--mut);font:12px/1.5 Consolas,monospace"></pre>
   </details>
   <p><span data-i18n="cacheHelp">Ratings incorrect or outdated?</span> <button class="linkbtn" id="clear" data-i18n="clearCache">Clear cache</button> <span data-i18n="refreshNetflix">and refresh Netflix.</span></p>
