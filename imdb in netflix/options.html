@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="nl">
+<html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>IMDb Rating voor Netflix</title>
+<title>IMDb Ratings for Netflix</title>
 <link rel="stylesheet" href="badge.css">
 <style>
 :root{--bg:#0e0e10;--surf:#17171a;--line:#2a2a30;--txt:#f3f2ee;--mut:#9b9ba5;--y:#f5c518;--g:#46d369;--r:#ff5a5f}
@@ -106,20 +106,20 @@ button{font:inherit;cursor:pointer}
   .demo *,.status *,.toast,.spin{animation:none!important}
   .type{width:14ch}.radio u b{transform:scale(1)}.tick{transform:scale(1)}.cursor{left:58%;top:62%}
 }
-</style>
+.topbar{display:flex;justify-content:flex-end;margin-bottom:12px}.language-switch{display:flex;align-items:center;gap:6px;color:var(--mut);font-size:13px}.language-switch button{border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:var(--surf);color:var(--mut)}.language-switch button[aria-pressed="true"]{border-color:var(--y);color:var(--y)}.credit{text-align:center;color:var(--mut);font-size:13px;margin:0 0 36px}.credit strong{color:var(--txt)}\n</style>
 <body>
 <main>
   <div id="heroBadge"></div>
-  <h1>Zie de IMDb-rating op elke Netflix-titel</h1>
-  <p class="lead">De extensie zet rating, Rotten Tomatoes en Metascore op elk kaartje. Hover over de badge voor poster, plot en cast. Om ratings op te halen heeft hij eenmalig een gratis sleutel (API key) nodig.</p>
+  <h1 data-i18n="pageTitle">See IMDb ratings on every Netflix title</h1>
+  <p class="lead" data-i18n="lead">This extension adds IMDb, Rotten Tomatoes and Metascore ratings to Netflix title cards. Hover over a badge to see the poster, plot and cast. A free API key is required to retrieve ratings.</p>
 
-  <h2>Gratis key aanvragen</h2>
-  <p>Dit duurt twee minuten en kost niets. Je krijgt 1.000 opzoekingen per dag, ruim voldoende omdat elke titel een week onthouden wordt.</p>
+  <h2 data-i18n="getKey">Get a free API key</h2>
+  <p data-i18n="keyIntro">It takes about two minutes and is free. The free OMDb plan includes 1,000 requests per day. Ratings are cached for a week to reduce requests.</p>
 
   <ol class="steps">
     <li class="step">
       <div class="num">1</div>
-      <div><h3>Open de aanvraagpagina van OMDb</h3><p>OMDb is de dienst waar de ratings vandaan komen. <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener">Open omdbapi.com/apikey.aspx</a> in een nieuw tabblad.</p></div>
+      <div><h3 data-i18n="step1Title">Open the OMDb signup page</h3><p data-i18n="step1Text">OMDb provides the ratings. Open <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener">omdbapi.com/apikey.aspx</a> in a new tab.</p></div>
       <div class="demo" aria-hidden="true">
         <div class="bar"><i></i><i></i><i></i><span class="url">omdbapi.com</span></div>
         <div class="pad"><div class="sk" style="width:70%"></div><div class="sk" style="width:45%"></div><span class="fbtn">API Key</span></div>
@@ -128,7 +128,7 @@ button{font:inherit;cursor:pointer}
     </li>
     <li class="step">
       <div class="num">2</div>
-      <div><h3>Kies FREE en vul je e-mailadres in</h3><p>Kies de gratis optie (1.000 per dag), vul je gegevens in en druk op Submit. Bij "Use" mag je "Personal" invullen.</p></div>
+      <div><h3 data-i18n="step2Title">Choose FREE and enter your email address</h3><p data-i18n="step2Text">Choose the free plan (1,000 requests per day), enter your details and press Submit. You can enter “Personal” in the “Use” field.</p></div>
       <div class="demo" aria-hidden="true"><div class="pad">
         <div class="radio on"><u><b></b></u>FREE (1.000 per dag)</div>
         <div class="radio"><u></u>Patreon</div>
@@ -138,14 +138,14 @@ button{font:inherit;cursor:pointer}
     </li>
     <li class="step">
       <div class="num">3</div>
-      <div><h3>Activeer de key via de e-mail</h3><p>Je krijgt direct een mail met je key. Klik op de activatielink in die mail, anders werkt de key niet. Niks ontvangen? Kijk in je spam.</p></div>
+      <div><h3 data-i18n="step3Title">Activate your key by email</h3><p data-i18n="step3Text">You’ll receive an email with your key. Click the activation link in that email or the key won’t work. Didn’t receive it? Check your spam folder.</p></div>
       <div class="demo" aria-hidden="true">
         <div class="mail"><span class="ping"></span><div class="sk" style="width:60%"></div><div class="sk" style="width:85%"></div><span class="fbtn">Activate key</span></div>
       </div>
     </li>
     <li class="step">
       <div class="num">4</div>
-      <div><h3>Plak de key hieronder</h3><p>Kopieer de key (een code van ongeveer 8 tekens) uit de mail en plak hem in het veld hieronder. Je mag ook de hele activatielink plakken, de key wordt er vanzelf uitgehaald.</p></div>
+      <div><h3 data-i18n="step4Title">Paste your key below</h3><p data-i18n="step4Text">Copy the key from the email and paste it below. You can also paste the full activation link; the key will be extracted automatically.</p></div>
       <div class="demo" aria-hidden="true"><div class="pad" style="padding-top:26px">
         <div class="field"><span class="type" style="animation-name:typing8">a1b2c3d4</span></div>
         <span class="fbtn">Testen en opslaan</span>
@@ -156,7 +156,7 @@ button{font:inherit;cursor:pointer}
   </ol>
 
   <section class="panel key">
-    <h3>Jouw API key</h3>
+    <h3 data-i18n="yourKey">Your API key</h3>
     <div class="inp">
       <input id="key" type="password" placeholder="bijvoorbeeld a1b2c3d4" autocomplete="off" spellcheck="false" aria-label="OMDb API key">
       <button id="eye" class="ghost" type="button" aria-pressed="false">Tonen</button>
@@ -165,29 +165,29 @@ button{font:inherit;cursor:pointer}
     <div id="status" class="status" role="status"></div>
   </section>
 
-  <h2>Weergave</h2>
+  <h2 data-i18n="display">Display</h2>
   <section class="panel">
-    <div class="opt"><span>Rotten Tomatoes<small>Toon het tomatenpercentage in de badge</small></span><label class="sw"><input type="checkbox" id="showRT"><i></i></label></div>
-    <div class="opt"><span>Metascore<small>Toon de Metacritic-score</small></span><label class="sw"><input type="checkbox" id="showMeta"><i></i></label></div>
-    <div class="opt"><span>Aantal stemmen<small>Bijvoorbeeld 2,9M naast de rating</small></span><label class="sw"><input type="checkbox" id="showVotes"><i></i></label></div>
-    <div class="opt"><span>Infokaart bij hover<small>Poster, plot, cast en awards als je op de badge wijst</small></span><label class="sw"><input type="checkbox" id="showCard"><i></i></label></div>
-    <div class="opt"><span>Foutopsporing<small>Toon ook badges die niets vonden, met uitleg in de tooltip</small></span><label class="sw"><input type="checkbox" id="debug"><i></i></label></div>
-    <div class="opt"><span>Grootte</span>
+    <div class="opt"><span><span data-i18n="rottenTomatoes">Rotten Tomatoes</span><small data-i18n="rottenHelp">Show the Rotten Tomatoes score in the badge</small></span><label class="sw"><input type="checkbox" id="showRT"><i></i></label></div>
+    <div class="opt"><span>Metascore<small data-i18n="metaHelp">Show the Metacritic score</small></span><label class="sw"><input type="checkbox" id="showMeta"><i></i></label></div>
+    <div class="opt"><span><span data-i18n="votes">Vote count</span><small data-i18n="votesHelp">For example, 2.9M next to the rating</small></span><label class="sw"><input type="checkbox" id="showVotes"><i></i></label></div>
+    <div class="opt"><span><span data-i18n="hoverCard">Hover info card</span><small data-i18n="hoverHelp">Show poster, plot, cast and awards when hovering over a badge</small></span><label class="sw"><input type="checkbox" id="showCard"><i></i></label></div>
+    <div class="opt"><span><span data-i18n="debug">Debug mode</span><small data-i18n="debugHelp">Also show badges for missing results, with details in the tooltip</small></span><label class="sw"><input type="checkbox" id="debug"><i></i></label></div>
+    <div class="opt"><span data-i18n="size">Size</span>
       <div class="seg" id="size"><button data-v="s" aria-pressed="false">Klein</button><button data-v="m" aria-pressed="false">Normaal</button><button data-v="l" aria-pressed="false">Groot</button></div></div>
     <div class="preview"><div id="pv"></div><div id="pvc"></div></div>
   </section>
 
-  <h2>Problemen oplossen</h2>
-  <details class="panel"><summary>Diagnose: waarom zie ik geen ratings?</summary>
-    <p style="margin-top:12px">Test de verbinding en een titel naar keuze (titel en jaar zoals Netflix ze toont). Stuur me de uitkomst als het niet werkt.</p>
+  <h2 data-i18n="troubleshooting">Troubleshooting</h2>
+  <details class="panel"><summary data-i18n="diagnoseTitle">Diagnosis: why aren’t ratings showing?</summary>
+    <p style="margin-top:12px" data-i18n="diagnoseHelp">Test the connection and look up a title (use the title and year as shown on Netflix). Share the result if it doesn’t work.</p>
     <div class="inp"><input id="dq" value="Turning Point: The Vietnam War" aria-label="Titel"><input id="dy" value="2025" style="max-width:90px" aria-label="Jaar"></div>
     <button id="diag" class="primary" type="button">Diagnose starten</button>
     <pre id="diagOut" style="white-space:pre-wrap;word-break:break-all;margin:14px 0 0;color:var(--mut);font:12px/1.5 Consolas,monospace"></pre>
   </details>
-  <p>Ratings kloppen niet of zijn verouderd? <button class="linkbtn" id="clear">Cache leegmaken</button> en ververs Netflix.</p>
-  <p class="hint">Staat er "–" bij een titel? OMDb kent alleen Engelse titels. Titels die Netflix in het Nederlands toont, worden soms niet gevonden. Liever een verkeerde film dan een foute rating, dus zulke titels blijven leeg.</p>
+  <p><span data-i18n="cacheHelp">Ratings incorrect or outdated?</span> <button class="linkbtn" id="clear" data-i18n="clearCache">Clear cache</button> <span data-i18n="refreshNetflix">and refresh Netflix.</span></p>
+  <p class="hint" data-i18n="missingHint">Seeing “–” for a title? Some titles may not be found, especially when Netflix uses a localized title. The extension prefers showing no score over displaying a rating for the wrong movie or series.</p>
 </main>
-<p class="hint" style="text-align:center;margin-bottom:40px" id="ver"></p>
+<p class="hint" style="text-align:center;margin-bottom:12px" id="ver"></p><p class="credit" id="credit" data-i18n="credit">Created by <strong>adminmossel</strong> · Meppel, The Netherlands</p>
 <div class="toast" id="toast"></div>
 <script src="badge.js"></script>
 <script src="options.js"></script>
