@@ -46,42 +46,51 @@ globalThis.IMDbUI = (() => {
 
   // ---------- badge ----------
   function makeBadge(res, o, hooks) {
-    o = Object.assign({ showMeta: true, showRT: true, showVotes: false, size: "m" }, o);
+    o = Object.assign({ showMeta: true, showRT: true, showVotes: false, size: "m", style: "badge" }, o);
     hooks = hooks || {};
-    const a = h("a", "imdb-badge imdb-sz-" + o.size);
+    const style = ["badge", "compact", "minimal"].includes(o.style) ? o.style : "badge";
+    const a = h("a", "imdb-badge imdb-sz-" + o.size + " imdb-style-" + style);
+    const setLink = () => {
+      if (!res || !res.id) return;
+      a.href = "https://www.imdb.com/title/" + res.id + "/";
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.addEventListener("click", (e) => e.stopPropagation());
+    };
+    const number = res && res.rating != null ? parseFloat(res.rating) : NaN;
+    const hasRating = Number.isFinite(number);
+    const hasRT = !!(res && res.rt != null && Number.isFinite(parseFloat(res.rt)));
+    const hasMeta = !!(res && res.metascore && res.metascore !== "N/A");
+    const detail = res && res.dbg
+      ? " · gezocht: " + res.dbg.q + (res.dbg.y ? " (" + res.dbg.y + ")" : "") + " · " + (res.dbg.steps || []).join(" | ")
+      : "";
 
     if (res && res.loading) {
       a.classList.add("imdb-loading");
-      a.append(logo(), h("span", "imdb-skel"));
+      const dots = h("span", "imdb-dots");
+      dots.append(h("i"), h("i"), h("i"));
+      a.appendChild(dots);
+      a.title = "IMDb-gegevens laden";
       return a;
     }
 
-    if (res && res.rating) {
-      a.classList.add("imdb-t-" + tier(res.rating));
-      const sc = h("span", "imdb-score");
-      sc.append(h("span", "n", res.rating.toFixed(1)), h("small", null, "/10"));
-      a.append(logo(), star(), sc);
-
-      const v = o.showVotes && fmtVotes(res.votes);
-      if (v) a.append(h("span", "imdb-votes", v));
-
-      if (o.showRT && res.rt != null) {
-        const c = h("span", "imdb-chip imdb-rt");
-        c.title = "Rotten Tomatoes";
-        c.append(tomato(), document.createTextNode(res.rt + "%"));
-        a.append(c);
+    const noRatingText = res && res.id ? "IMDb · geen score" : "IMDb · niet gevonden";
+    if (style !== "badge") {
+      a.classList.add("imdb-text");
+      let text = hasRating ? "IMDb " + number.toFixed(1) : noRatingText;
+      if (style === "compact") {
+        if (o.showRT && hasRT) text += " · RT " + res.rt + "%";
+        if (o.showMeta && hasMeta) text += " · Meta " + res.metascore;
+        if (o.showVotes && res.votes) text += " · " + fmtVotes(res.votes);
       }
-      if (o.showMeta && res.metascore) {
-        const c = h("span", "imdb-chip imdb-mg imdb-mg-" + metaCls(res.metascore), res.metascore);
-        c.title = "Metascore";
-        a.append(c);
-      }
-      if (res.id) {
-        a.href = "https://www.imdb.com/title/" + res.id + "/";
-        a.target = "_blank";
-        a.rel = "noopener";
-        a.addEventListener("click", (e) => e.stopPropagation());
-      }
+      a.appendChild(h("span", "imdb-inline-text", text));
+      if (res && res.error) a.title = "IMDb: " + res.error + detail;
+      else a.title = hasRating ? "IMDb " + number.toFixed(1) + "/10" + detail : noRatingText + detail;
+      if (res && res.error === "no-key") {
+        a.title = "Klik om je gratis OMDb-key in te stellen";
+        a.href = "#";
+        a.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); hooks.onOptions && hooks.onOptions(); });
+      } else setLink();
       return a;
     }
 
@@ -97,21 +106,44 @@ globalThis.IMDbUI = (() => {
         });
       }
     };
-    if (res && res.id) {                       // wel gevonden, nog geen rating
-      err("nog geen rating", "Op IMDb gevonden, maar nog geen rating" + (res.dbg ? " · " + res.dbg.steps.join(" | ") : ""));
-      a.href = "https://www.imdb.com/title/" + res.id + "/";
-      a.target = "_blank"; a.rel = "noopener";
-      a.addEventListener("click", (ev) => ev.stopPropagation());
+
+    if (hasRating || hasRT || hasMeta) {
+      if (hasRating) {
+        a.classList.add("imdb-t-" + tier(number));
+        const sc = h("span", "imdb-score");
+        sc.append(h("span", "n", number.toFixed(1)), h("small", null, "/10"));
+        a.append(logo(), star(), sc);
+      } else {
+        a.classList.add("imdb-muted");
+        a.append(logo(), h("span", "imdb-score-label", res && res.id ? "geen IMDb-score" : "IMDb-score ontbreekt"));
+      }
+
+      const v = o.showVotes && fmtVotes(res && res.votes);
+      if (v && hasRating) a.append(h("span", "imdb-votes", v));
+      if (o.showRT && hasRT) {
+        const c = h("span", "imdb-chip imdb-rt");
+        c.title = "Rotten Tomatoes";
+        c.append(tomato(), document.createTextNode(res.rt + "%"));
+        a.append(c);
+      }
+      if (o.showMeta && hasMeta) {
+        const c = h("span", "imdb-chip imdb-mg imdb-mg-" + metaCls(res.metascore), res.metascore);
+        c.title = "Metascore";
+        a.append(c);
+      }
+      if (res && res.id) setLink();
+      a.title = (hasRating ? "IMDb " + number.toFixed(1) + "/10" : noRatingText) + detail;
       return a;
     }
+
     const e = res && res.error;
     if (e === "no-key") err("key instellen", "Klik om je gratis OMDb-key in te stellen", true);
     else if (e === "bad-key") err("key ongeldig", "Klik om je OMDb-key te controleren", true);
     else if (e === "limit") err("daglimiet bereikt", "OMDb staat 1.000 aanvragen per dag toe. Morgen werkt het weer.");
     else if (e === "ctx") err("ververs pagina", "De extensie is bijgewerkt: ververs de pagina");
-    else if (e) err("niet beschikbaar", "Ophalen mislukt, probeer het later opnieuw");
-    else err("niet gevonden", "Niet gevonden" + (res && res.dbg ? " · gezocht: \"" + res.dbg.q + "\"" +
-      (res.dbg.y ? " (" + res.dbg.y + ")" : "") + " · " + res.dbg.steps.join(" | ") : ""));
+    else if (e === "fetch") err("ophalen mislukt", "De gegevens konden niet worden opgehaald. Probeer het later opnieuw.");
+    else if (e) err("niet beschikbaar", "Ophalen mislukt: " + e);
+    else err("geen IMDb-score", "Geen betrouwbare IMDb-match gevonden" + detail);
     return a;
   }
 
@@ -139,11 +171,15 @@ globalThis.IMDbUI = (() => {
     if (sub) body.appendChild(h("div", "imdb-card-sub", sub));
 
     const sc = h("div", "imdb-card-scores");
-    const big = h("div", "imdb-big imdb-t-" + tier(res.rating));
-    big.append(star(), h("span", "n", res.rating.toFixed(1)), h("small", null, "/10"));
-    const v = fmtVotes(res.votes);
-    if (v) big.append(h("em", null, v + " stemmen"));
-    sc.appendChild(big);
+    if (res.rating != null && Number.isFinite(parseFloat(res.rating))) {
+      const big = h("div", "imdb-big imdb-t-" + tier(parseFloat(res.rating)));
+      big.append(star(), h("span", "n", parseFloat(res.rating).toFixed(1)), h("small", null, "/10"));
+      const v = fmtVotes(res.votes);
+      if (v) big.append(h("em", null, v + " stemmen"));
+      sc.appendChild(big);
+    } else {
+      sc.appendChild(h("span", "imdb-card-no-rating", res.id ? "Nog geen IMDb-score" : "Geen IMDb-score beschikbaar"));
+    }
     if (res.rt != null) {
       const c = h("span", "imdb-chip imdb-rt");
       c.append(tomato(), document.createTextNode(res.rt + "%"));
