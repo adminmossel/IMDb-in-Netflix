@@ -73,6 +73,7 @@ html.imdb-playback-hidden .imdb-badge { display: none !important; }
 /* plaatsing op de grote titelpagina / modal */
 .imdb-badge.imdb-inline { position: static; margin-left: 12px; align-self: center; }
 .imdb-badge.imdb-float { position: fixed; top: 84px; left: 24px; }
+.imdb-badge.imdb-main-inline { position: relative; display: inline-flex; margin: 10px 0 0 8px; }
 
 /* ---------- infokaart ---------- */
 .imdb-card {
