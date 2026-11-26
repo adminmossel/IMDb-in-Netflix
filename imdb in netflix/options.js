@@ -2,6 +2,7 @@
 const $ = (id) => document.getElementById(id);
 const I18N = {
  en: {
+  trailersTitle:"Optional trailers",trailersHelp:"Enable trailers in the hover info card",tmdbIntro:"Trailers are off by default. Add your own free TMDb API key and enable the switch to use this feature. Without both, no trailer requests are made.",tmdbSave:"Test and save TMDb key",tmdbLink:"Get a TMDb API key",
   pageTitle:"See IMDb ratings on every Netflix title",lead:"This extension adds IMDb, Rotten Tomatoes and Metascore ratings to Netflix title cards. Hover over a badge to see the poster, plot and cast. A free API key is required to retrieve ratings.",
   getKey:"Get a free API key",keyIntro:"It takes about two minutes and is free. The free OMDb plan includes 1,000 requests per day. Ratings are cached for a week to reduce requests.",
   step1Title:"Open the OMDb signup page",step1Text:'OMDb provides the ratings. Open <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener">omdbapi.com/apikey.aspx</a> in a new tab.',
@@ -22,6 +23,7 @@ const I18N = {
   suggestionError:"Suggestions error: ",fetchError:"Fetch error: "
  },
  nl: {
+  trailersTitle:"Optionele trailers",trailersHelp:"Toon trailers in de infokaart bij hover",tmdbIntro:"Trailers staan standaard uit. Voeg je eigen gratis TMDb API-key toe en zet de schakelaar aan om deze functie te gebruiken. Zonder beide worden geen trailer-aanvragen gedaan.",tmdbSave:"TMDb-key testen en opslaan",tmdbLink:"Vraag een TMDb API-key aan",
   pageTitle:"Bekijk IMDb-scores bij elke Netflix-titel",lead:"Deze extensie toont IMDb-, Rotten Tomatoes- en Metascore-scores op Netflix-kaartjes. Beweeg over een badge voor de poster, plot en cast. Voor het ophalen van scores is een gratis API-key nodig.",
   getKey:"Gratis API-key aanvragen",keyIntro:"Dit duurt ongeveer twee minuten en is gratis. Het gratis OMDb-abonnement biedt 1.000 aanvragen per dag. Scores worden een week bewaard om aanvragen te beperken.",
   step1Title:"Open de OMDb-aanmeldpagina",step1Text:'OMDb levert de scores. Open <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener">omdbapi.com/apikey.aspx</a> in een nieuw tabblad.',
@@ -68,7 +70,7 @@ $("langEn").addEventListener("click", async () => { setLanguage("en"); await chr
 $("langNl").addEventListener("click", async () => { setLanguage("nl"); await chrome.storage.sync.set({language:"nl"}); });
 chrome.storage.sync.get(["language"]).then(d => setLanguage(d.language || "en"));
 
-const DEF = { showMeta: true, showRT: true, showVotes: false, showCard: true, showCards: true, showHover: true, showMain: true, size: "m", style: "badge", playbackMode: "tiny", debug: false };
+const DEF = { showMeta: true, showRT: true, showVotes: false, showCard: true, showCards: true, showHover: true, showMain: true, size: "m", style: "badge", playbackMode: "tiny", debug: false, trailerEnabled: false };
 let S = { ...DEF };
 const SAMPLE = {
   rating: 8.1, rt: 92, metascore: "74", votes: "1,234,567", id: "tt0000000",
@@ -110,7 +112,7 @@ function renderPreview() {
   $("pvc").replaceChildren(...(S.showCard ? [IMDbUI.buildCard(SAMPLE, language)] : []));
 }
 function syncUI() {
-  ["showRT", "showMeta", "showVotes", "showCard", "showCards", "showHover", "showMain", "debug"].forEach((k) => ($(k).checked = !!S[k]));
+  ["showRT", "showMeta", "showVotes", "showCard", "showCards", "showHover", "showMain", "debug", "trailerEnabled"].forEach((k) => ($(k).checked = !!S[k]));
   document.querySelectorAll("#size button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === S.size)));
   document.querySelectorAll("#style button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === S.style)));
   document.querySelectorAll("#playback button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === S.playbackMode)));
@@ -122,7 +124,12 @@ async function save(patch) {
   syncUI();
   toast(tr("saved"));
 }
-["showRT", "showMeta", "showVotes", "showCard", "showCards", "showHover", "showMain", "debug"].forEach((k) => $(k).addEventListener("change", (e) => save({ [k]: e.target.checked })));
+["showRT","showMeta","showVotes","showCard","showCards","showHover","showMain","debug"].forEach(k=>$ (k).addEventListener("change",e=>save({[k]:e.target.checked})));
+$("trailerEnabled").addEventListener("change",async e=>{
+ const enabled=e.target.checked;
+ if(enabled){const granted=await chrome.permissions.request({origins:["https://api.themoviedb.org/*"]});if(!granted){e.target.checked=false;tmdbStatus("warn",language==="nl"?"Toestemming geweigerd; trailers blijven uit.":"Permission denied; trailers remain off.");return;}}
+ await save({trailerEnabled:enabled});
+});
 $("size").addEventListener("click", (e) => { const v = e.target.dataset && e.target.dataset.v; if (v) save({ size: v }); });
 $("style").addEventListener("click", (e) => { const v = e.target.dataset && e.target.dataset.v; if (v) save({ style: v }); });
 $("playback").addEventListener("click", (e) => { const v = e.target.dataset && e.target.dataset.v; if (v) save({ playbackMode: v }); });
@@ -182,6 +189,18 @@ $("eye").addEventListener("click", () => {
   $("eye").setAttribute("aria-pressed", String(show));
 });
 
+
+async function testTmdbKey(key){try{const r=await fetch("https://api.themoviedb.org/3/configuration?api_key="+encodeURIComponent(key));if(r.ok)return"ok";if(r.status===401)return"invalid";return"network";}catch{return"network";}}
+function tmdbStatus(kind,message){const s=$("tmdbStatus");s.className="status show "+kind;s.textContent=message;}
+$("tmdbSave").addEventListener("click",async()=>{
+ const key=$("tmdbKey").value.trim();if(!key)return tmdbStatus("err",language==="nl"?"Plak eerst je TMDb-key.":"Paste your TMDb key first.");
+ const granted=await chrome.permissions.request({origins:["https://api.themoviedb.org/*"]});if(!granted)return tmdbStatus("warn",language==="nl"?"Toestemming geweigerd; TMDb-key niet getest.":"Permission denied; TMDb key was not tested.");
+ const b=$("tmdbSave");b.disabled=true;b.classList.add("busy");const result=await testTmdbKey(key);b.disabled=false;b.classList.remove("busy");
+ if(result==="ok"){await chrome.storage.sync.set({tmdbApiKey:key});tmdbStatus("ok",language==="nl"?"TMDb-key gecontroleerd en opgeslagen.":"TMDb key verified and saved.");}
+ else tmdbStatus("err",language==="nl"?"TMDb-key ongeldig of verbinding mislukt.":"TMDb key invalid or connection failed.");
+});
+$("tmdbEye").addEventListener("click",()=>{const show=$("tmdbKey").type==="password";$("tmdbKey").type=show?"text":"password";$("tmdbEye").textContent=tr(show?"hide":"show");});
+
 // ---------- cache leegmaken ----------
 $("clear").addEventListener("click", async () => {
   const all = await chrome.storage.local.get(null);
@@ -191,9 +210,10 @@ $("clear").addEventListener("click", async () => {
 });
 
 // ---------- laden ----------
-chrome.storage.sync.get([...Object.keys(DEF), "apiKey"]).then((d) => {
+chrome.storage.sync.get([...Object.keys(DEF), "apiKey", "tmdbApiKey"]).then((d) => {
   S = { ...DEF, ...d };
   $("key").value = d.apiKey || "";
+  $("tmdbKey").value = d.tmdbApiKey || "";
   syncUI();
 });
 
