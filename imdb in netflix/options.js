@@ -106,8 +106,8 @@ function toast(msg) {
 
 // ---------- voorbeeld ----------
 function renderPreview() {
-  $("pv").replaceChildren(IMDbUI.makeBadge(SAMPLE, S));
-  $("pvc").replaceChildren(...(S.showCard ? [IMDbUI.buildCard(SAMPLE)] : []));
+  $("pv").replaceChildren(IMDbUI.makeBadge(SAMPLE, { ...S, language }));
+  $("pvc").replaceChildren(...(S.showCard ? [IMDbUI.buildCard(SAMPLE, language)] : []));
 }
 function syncUI() {
   ["showRT", "showMeta", "showVotes", "showCard", "showCards", "showHover", "showMain", "debug"].forEach((k) => ($(k).checked = !!S[k]));
