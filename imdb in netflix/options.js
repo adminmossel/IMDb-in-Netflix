@@ -127,8 +127,13 @@ async function save(patch) {
 ["showRT","showMeta","showVotes","showCard","showCards","showHover","showMain","debug"].forEach((k)=>$(k).addEventListener("change",(e)=>save({[k]:e.target.checked})));
 $("trailerEnabled").addEventListener("change",async e=>{
  const enabled=e.target.checked;
- if(enabled && !(await chrome.storage.sync.get(["tmdbApiKey"])).tmdbApiKey){e.target.checked=false;tmdbStatus("warn",language==="nl"?"Voeg eerst een TMDb API-key toe en sla deze op.":"Add and save a TMDb API key first.");return;}
- if(enabled){const granted=await chrome.permissions.request({origins:["https://api.themoviedb.org/*"]});if(!granted){e.target.checked=false;tmdbStatus("warn",language==="nl"?"Toestemming geweigerd; trailers blijven uit.":"Permission denied; trailers remain off.");return;}}
+ if(enabled && !$("tmdbKey").value.trim()){e.target.checked=false;tmdbStatus("warn",language==="nl"?"Voeg eerst een TMDb API-key toe en sla deze op.":"Add and save a TMDb API key first.");return;}
+ if(enabled){
+  const granted=await chrome.permissions.request({origins:["https://api.themoviedb.org/*"]});
+  if(!granted){e.target.checked=false;tmdbStatus("warn",language==="nl"?"Toestemming geweigerd; trailers blijven uit.":"Permission denied; trailers remain off.");return;}
+  const saved=(await chrome.storage.sync.get(["tmdbApiKey"])).tmdbApiKey;
+  if(!saved){e.target.checked=false;tmdbStatus("warn",language==="nl"?"Sla eerst je TMDb-key op met de knop hierboven.":"Save your TMDb key with the button above first.");return;}
+ }
  await save({trailerEnabled:enabled});
 });
 $("size").addEventListener("click", (e) => { const v = e.target.dataset && e.target.dataset.v; if (v) save({ size: v }); });
