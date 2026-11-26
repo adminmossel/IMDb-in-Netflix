@@ -205,7 +205,7 @@ $("tmdbEye").addEventListener("click",()=>{const show=$("tmdbKey").type==="passw
 // ---------- cache leegmaken ----------
 $("clear").addEventListener("click", async () => {
   const all = await chrome.storage.local.get(null);
-  const keys = Object.keys(all).filter((k) => /^(r|n)\d+:/.test(k));
+  const keys = Object.keys(all).filter((k) => /^(r|n|tr)\d+:/.test(k));
   await chrome.storage.local.remove(keys);
   toast(tr("cacheCleared", {count:keys.length}));
 });
