@@ -2,7 +2,7 @@
 // eigen backend die de officiële IMDb API (AWS Data Exchange) gebruikt.
 const TTL = 7 * 24 * 60 * 60 * 1000;      // gevonden ratings: 7 dagen
 const NEG_TTL = 3 * 60 * 60 * 1000;      // "niet gevonden": 3 uur
-const PREFIX = "r5:";                     // nieuwe cache-versie (oude, foute resultaten vervallen)
+const PREFIX = "r6:"                     // nieuwe cache-versie (oude, foute resultaten vervallen)
 
 // ---------- titel-vergelijking: voorkomt dat een verkeerde film wordt getoond ----------
 const norm = (s) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -105,8 +105,8 @@ async function fetchRating(title, key, year, mediaType) {
   let fallback = null;
   const done = (m) => ({ ...m, dbg });
   const take = (m) => {
-    if (m && m.rating != null) return m;
-    if (m && m.id && !fallback) fallback = m;
+    if (m && m.rating != null) return { ...m, verified: true };
+    if (m && m.id && !fallback) fallback = { ...m, verified: true };
     return null;
   };
   const byId = async (id) => {
@@ -141,7 +141,7 @@ async function fetchRating(title, key, year, mediaType) {
     dbg.steps.push("t:" + (direct.Response === "True" ? direct.Title + "(" + direct.imdbRating + ")" : direct.Error));
     if (direct.Response === "True") {
       const candidate = map(direct);
-      const safe = sim(candidate.title, title) >= 0.6 &&
+      const safe = sim(candidate.title, title) >= 0.82 &&
         typeCompatible(candidate.type, mediaType) &&
         yearCompatible(candidate.year, yr);
       if (safe) {
@@ -168,7 +168,7 @@ async function fetchRating(title, key, year, mediaType) {
     }
   }));
   for (const item of checked) {
-    if (!item.m || sim(item.m.title, title) < 0.6 || !typeCompatible(item.m.type, mediaType) || !yearCompatible(item.m.year, yr)) continue;
+    if (!item.m || sim(item.m.title, title) < 0.82 || !typeCompatible(item.m.type, mediaType) || !yearCompatible(item.m.year, yr)) continue;
     const m = take(item.m);
     if (m) return done(m);
   }
@@ -189,7 +189,7 @@ async function fetchRating(title, key, year, mediaType) {
         }
       }));
       for (const m0 of results) {
-        if (!m0 || sim(m0.title, title) < 0.6 || !typeCompatible(m0.type, mediaType) || !yearCompatible(m0.year, yr)) continue;
+        if (!m0 || sim(m0.title, title) < 0.82 || !typeCompatible(m0.type, mediaType) || !yearCompatible(m0.year, yr)) continue;
         const m = take(m0);
         if (m) return done(m);
       }
@@ -199,6 +199,42 @@ async function fetchRating(title, key, year, mediaType) {
     dbg.steps.push("s-fout:" + (e && e.message || "onbekend"));
   }
   return done(fallback || { rating: null });
+}
+
+
+const TRAILER_TTL = 7 * 864e5;
+async function tmdbJson(path, key) {
+ const u=new URL("https://api.themoviedb.org/3"+path); u.searchParams.set("api_key",key);
+ const c=new AbortController(),timer=setTimeout(()=>c.abort(),9000);
+ try { const r=await fetch(u,{signal:c.signal}); if(!r.ok) throw new Error("tmdb-"+r.status); return await r.json(); }
+ finally { clearTimeout(timer); }
+}
+async function getTrailer(msg) {
+ const {tmdbApiKey,trailerEnabled}=await chrome.storage.sync.get(["tmdbApiKey","trailerEnabled"]);
+ if(!trailerEnabled||!tmdbApiKey) return null;
+ const ck="tr1:"+(msg.imdbId||norm(msg.title)+":"+(msg.year||"")+":"+(msg.mediaType||""));
+ const cached=(await chrome.storage.local.get([ck]))[ck];
+ if(cached&&Date.now()-cached.t<TRAILER_TTL) return cached.v;
+ const kind=msg.mediaType==="series"?"tv":"movie"; let tmdbId=null;
+ if(msg.imdbId&&/^tt\d+$/.test(msg.imdbId)) {
+  const found=await tmdbJson("/find/"+encodeURIComponent(msg.imdbId)+"?external_source=imdb_id",tmdbApiKey);
+  const list=kind==="tv"?(found.tv_results||[]):(found.movie_results||[]);
+  const m=list.find(x=>{const d=kind==="tv"?x.first_air_date:x.release_date;const a=parseInt(String(d||"").slice(0,4),10),b=parseInt(String(msg.year||"").slice(0,4),10);return !a||!b||Math.abs(a-b)<=1;});
+  if(m) tmdbId=m.id;
+ }
+ if(!tmdbId&&msg.title) {
+  const s=await tmdbJson("/search/"+kind+"?query="+encodeURIComponent(msg.title)+(msg.year?(kind==="tv"?"&first_air_date_year=":"&year=")+encodeURIComponent(msg.year):"")+"&include_adult=false&language=nl-NL",tmdbApiKey);
+  const titleOf=x=>kind==="tv"?x.name:x.title, dateOf=x=>kind==="tv"?x.first_air_date:x.release_date;
+  const ranked=(s.results||[]).map(x=>({x,score:sim(titleOf(x),msg.title)})).filter(o=>o.score>=0.82&&(()=>{const a=parseInt(String(dateOf(o.x)||"").slice(0,4),10),b=parseInt(String(msg.year||"").slice(0,4),10);return !a||!b||Math.abs(a-b)<=1;})()).sort((a,b)=>b.score-a.score);
+  if(ranked[0]) tmdbId=ranked[0].x.id;
+ }
+ if(!tmdbId){await chrome.storage.local.set({[ck]:{t:Date.now(),v:null}});return null;}
+ let v=await tmdbJson("/"+kind+"/"+tmdbId+"/videos?language=nl-NL",tmdbApiKey);
+ let list=(v.results||[]).filter(x=>x.site==="YouTube"&&x.key&&(x.type==="Trailer"||x.type==="Teaser"));
+ if(!list.length){v=await tmdbJson("/"+kind+"/"+tmdbId+"/videos?language=en-US",tmdbApiKey);list=(v.results||[]).filter(x=>x.site==="YouTube"&&x.key&&(x.type==="Trailer"||x.type==="Teaser"));}
+ const chosen=list.sort((a,b)=>(Number(b.official)-Number(a.official))||(Number(b.type==="Trailer")-Number(a.type==="Trailer")))[0];
+ const result=chosen?{key:chosen.key,name:chosen.name||"Trailer"}:null;
+ await chrome.storage.local.set({[ck]:{t:Date.now(),v:result}}); return result;
 }
 
 // max 4 gelijktijdige aanvragen + dubbele aanvragen samenvoegen
@@ -236,6 +272,7 @@ chrome.runtime.onMessage.addListener((msg, _s, send) => {
       send({ error: ["bad-key", "limit"].includes(e && e.message) ? e.message : "fetch" }));
     return true;
   }
+  if (msg.type === "trailer") { getTrailer(msg).then(send).catch(()=>send(null)); return true; }
   if (msg.type === "options") chrome.runtime.openOptionsPage();
 });
 
@@ -243,6 +280,6 @@ chrome.runtime.onInstalled.addListener(async (d) => {
   if (d.reason === "install") chrome.runtime.openOptionsPage();
   // Oude cacheversies opruimen; de nieuwe matcher gebruikt r5 en n3.
   const all = await chrome.storage.local.get(null);
-  const old = Object.keys(all).filter((k) => /^(r2:|r3:|r4:)/.test(k) || /^(n1:|n2:)/.test(k));
+  const old = Object.keys(all).filter((k) => /^(r2:|r3:|r4:|r5:)/.test(k) || /^(n1:|n2:|n3:)/.test(k));
   if (old.length) chrome.storage.local.remove(old);
 });
