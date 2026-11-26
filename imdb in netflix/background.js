@@ -134,6 +134,12 @@ async function fetchRating(title, key, year, mediaType) {
 
   dbg.steps.push("suggesties:" + suggestions.length);
 
+  // Korte titels zoals "Close", "Her" of "Up" zijn zonder jaar/type te ambigu.
+  if (!yr && !mediaType && norm(title).split(" ").filter(Boolean).length < 2) {
+    dbg.steps.push("ambigue korte titel zonder Netflix-jaar/type; match overgeslagen");
+    return done({ rating: null });
+  }
+
   // Alleen exacte titelsuggesties van een bekend film-/serietype zijn kandidaten.
   // Geen substring- of woordoverlapmatches: die waren te riskant voor korte titels.
   let eligible = suggestions
