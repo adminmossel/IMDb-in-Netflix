@@ -1,5 +1,5 @@
 const UI = globalThis.IMDbUI;
-const DEF = { showMeta: true, showRT: true, showVotes: false, showCard: true, showCards: true, showHover: true, showMain: true, size: "m", style: "badge", playbackMode: "tiny", debug: false };
+const DEF = { showMeta: true, showRT: true, showVotes: false, showCard: true, showCards: true, showHover: true, showMain: true, language: "en", size: "m", style: "badge", playbackMode: "tiny", debug: false };
 let S = { ...DEF };
 const hooks = { onOptions: () => chrome.runtime.sendMessage({ type: "options" }).catch(() => {}) };
 
@@ -194,7 +194,7 @@ let card;
 function hideCard() { if (card) { card.remove(); card = null; } }
 function showCard(badge, res) {
   hideCard();
-  card = UI.buildCard(res);
+  card = UI.buildCard(res, S.language);
   document.body.appendChild(card);
   const r = badge.getBoundingClientRect();
   const w = card.offsetWidth, h = card.offsetHeight;
