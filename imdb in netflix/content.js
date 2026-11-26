@@ -1,5 +1,5 @@
 const UI = globalThis.IMDbUI;
-const DEF = { showMeta: true, showRT: true, showVotes: false, showCard: true, showCards: true, showHover: true, showMain: true, language: "en", size: "m", style: "badge", playbackMode: "tiny", debug: false };
+const DEF = { showMeta: true, showRT: true, showVotes: false, showCard: true, showCards: true, showHover: true, showMain: true, language: "en", size: "m", style: "badge", playbackMode: "tiny", debug: false, trailerEnabled: false };
 let S = { ...DEF };
 const hooks = { onOptions: () => chrome.runtime.sendMessage({ type: "options" }).catch(() => {}) };
 
@@ -16,6 +16,7 @@ function resetAll() {
   document.querySelectorAll(".imdb-badge").forEach((b) => b.remove());
   document.querySelectorAll("[data-imdb-id], [data-imdb-fail]").forEach((e) => { delete e.dataset.imdbId; delete e.dataset.imdbFail; });
   resById.clear();
+  idCache.clear();
   pendingById.clear();
   scan();
 }
@@ -118,7 +119,7 @@ const idCache = new Map();
 function infoFromId(id) {
   if (!idCache.has(id)) {
     idCache.set(id, (async () => {
-      const k = "n3:" + id;
+      const k = "n4:" + id;
       try {
         const st = (await chrome.storage.local.get([k]))[k];
         if (st && Date.now() - st.t < 30 * 864e5) return st.v;
@@ -141,6 +142,7 @@ function domTitles(host) {
   };
   if (!host) return out;
   add(host.getAttribute && host.getAttribute("aria-label"));
+  for (let p=host.parentElement,n=0;p&&n<3;p=p.parentElement,n++){add(p.getAttribute&&p.getAttribute("aria-label"));add(p.getAttribute&&p.getAttribute("data-title"));add(p.getAttribute&&p.getAttribute("title"));}
   add(host.getAttribute && host.getAttribute("title"));
   add(host.getAttribute && host.getAttribute("data-title"));
   host.querySelectorAll('img[alt], .fallback-text, [data-uia*="title"], [aria-label], [title]').forEach((e) => {
@@ -196,6 +198,12 @@ function showCard(badge, res) {
   hideCard();
   card = UI.buildCard(res, S.language);
   document.body.appendChild(card);
+  card.addEventListener("mouseleave", hideCard);
+  if (S.trailerEnabled && res && res.verified && res.id) {
+    const currentCard=card;
+    chrome.runtime.sendMessage({type:"trailer",imdbId:res.id,title:res.title,year:res.year,mediaType:res.type==="series"?"series":"movie"})
+      .then(trailer=>{if(trailer&&card===currentCard&&currentCard.isConnected)UI.addTrailer(currentCard,trailer,S.language);}).catch(()=>{});
+  }
   const r = badge.getBoundingClientRect();
   const w = card.offsetWidth, h = card.offsetHeight;
   const left = Math.min(r.left, window.innerWidth - w - 10);
@@ -212,7 +220,7 @@ function build(res, size, extra) {
   if (extra) b.classList.add(extra);
   if (res && S.showCard && (res.rating != null || res.id || res.title || res.plot)) {
     b.addEventListener("mouseenter", () => showCard(b, res));
-    b.addEventListener("mouseleave", hideCard);
+    b.addEventListener("mouseleave", e => { if (!card || !card.contains(e.relatedTarget)) hideCard(); });
   }
   return b;
 }
