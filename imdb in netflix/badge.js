@@ -54,7 +54,7 @@ globalThis.IMDbUI = (() => {
     const a = h("a", "imdb-badge imdb-sz-" + o.size + " imdb-style-" + style);
     if (style !== "badge") a.classList.add("imdb-text");
     const setLink = () => {
-      if (!res || !res.id) return;
+      if (!res || !res.id || !(hasRating || res.verified)) return;
       a.href = "https://www.imdb.com/title/" + res.id + "/";
       a.target = "_blank";
       a.rel = "noopener";
@@ -209,5 +209,15 @@ globalThis.IMDbUI = (() => {
     return card;
   }
 
-  return { makeBadge, buildCard, logo, star };
+
+  function addTrailer(card,trailer,language){
+    if(!card||!trailer||!trailer.key)return;
+    const body=card.querySelector(".imdb-card-body")||card,section=h("div","imdb-trailer"),button=h("button","imdb-trailer-button");
+    button.type="button";const thumb=h("img");thumb.src="https://img.youtube.com/vi/"+encodeURIComponent(trailer.key)+"/hqdefault.jpg";thumb.alt="";
+    button.append(thumb,h("span","imdb-trailer-play","▶"),h("span","imdb-trailer-label",language==="nl"?"Trailer bekijken":"Watch trailer"));
+    button.addEventListener("click",()=>{const frame=h("iframe","imdb-trailer-frame");frame.src="https://www.youtube-nocookie.com/embed/"+encodeURIComponent(trailer.key)+"?autoplay=1&rel=0";frame.title=trailer.name||"Movie trailer";frame.allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";frame.referrerPolicy="strict-origin-when-cross-origin";frame.allowFullscreen=true;section.replaceChildren(frame);});
+    section.appendChild(button);body.appendChild(section);
+  }
+
+  return { makeBadge, buildCard, addTrailer, logo, star };
 })();
