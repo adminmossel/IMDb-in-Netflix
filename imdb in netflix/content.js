@@ -76,8 +76,21 @@ async function netflixInfo(id) {
     try { r = await fetch("/title/" + id, { credentials: "include", signal: controller.signal }); }
     finally { clearTimeout(timeout); }
   } catch (e) { nfWhy.set(id, "fetch-fout: " + e.message); return null; }
-  if (!r.ok) { nfWhy.set(id, "titelpagina status " + r.status); return null; }
-  const html = await r.text();
+  if (!r.ok) {
+    try { r = await fetch("/watch/" + id, { credentials: "include" }); }
+    catch (e) { nfWhy.set(id, "titelpagina status " + r.status + "; watch-fout: " + e.message); return null; }
+  }
+  if (!r.ok) { nfWhy.set(id, "titelpagina/watch status " + r.status); return null; }
+  let html = await r.text();
+  if (!/application\/ld\+json|og:title|titleType|releaseYear/i.test(html)) {
+    try {
+      const alt = await fetch("/watch/" + id, { credentials: "include" });
+      if (alt.ok) {
+        const altHtml = await alt.text();
+        if (altHtml.length > html.length) html = altHtml;
+      }
+    } catch {}
+  }
   const doc = new DOMParser().parseFromString(html, "text/html");
   let t = null, ly = null, mediaType = null;
   const aliases = [];
@@ -99,12 +112,16 @@ async function netflixInfo(id) {
     addAlias(node.alternateName);
     addAlias(node.alternateHeadline);
     if (!ly) ly = String(node.datePublished || node.dateCreated || node.copyrightYear || "").slice(0, 4) || null;
+    Object.keys(node).forEach((k) => {
+      if (k !== "@context" && k !== "@graph" && node[k] && typeof node[k] === "object") visit(node[k]);
+    });
   };
   for (const script of doc.querySelectorAll('script[type="application/ld+json"]')) {
     try { visit(JSON.parse(script.textContent)); } catch {}
     if (t && ly) break;
   }
-  t = cleanTitle(t || doc.querySelector('meta[property="og:title"]')?.content || doc.title);
+  t = cleanTitle(t || doc.querySelector('meta[property="og:title"]')?.content ||
+    doc.querySelector('meta[name="title"]')?.content || doc.querySelector("h1")?.textContent || doc.title);
   if (!t) { nfWhy.set(id, "geen titel in pagina (titel: " + (doc.title || "leeg") + ")"); return null; }
   const ogType = doc.querySelector('meta[property="og:type"]')?.content || "";
   if (!mediaType && /tv|series|show/i.test(ogType)) mediaType = "series";
@@ -119,7 +136,7 @@ const idCache = new Map();
 function infoFromId(id) {
   if (!idCache.has(id)) {
     idCache.set(id, (async () => {
-      const k = "n4:" + id;
+      const k = "n5:" + id;
       try {
         const st = (await chrome.storage.local.get([k]))[k];
         if (st && Date.now() - st.t < 30 * 864e5) return st.v;
@@ -145,7 +162,7 @@ function domTitles(host) {
   for (let p=host.parentElement,n=0;p&&n<3;p=p.parentElement,n++){add(p.getAttribute&&p.getAttribute("aria-label"));add(p.getAttribute&&p.getAttribute("data-title"));add(p.getAttribute&&p.getAttribute("title"));}
   add(host.getAttribute && host.getAttribute("title"));
   add(host.getAttribute && host.getAttribute("data-title"));
-  host.querySelectorAll('img[alt], .fallback-text, [data-uia*="title"], [aria-label], [title]').forEach((e) => {
+  host.querySelectorAll('img[alt], .fallback-text, h1, h2, h3, [data-uia*="title"], [aria-label], [title]').forEach((e) => {
     add(e.alt || e.getAttribute("aria-label") || e.getAttribute("title") || e.textContent);
   });
   return out;
