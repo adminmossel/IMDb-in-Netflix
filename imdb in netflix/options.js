@@ -124,7 +124,7 @@ async function save(patch) {
   syncUI();
   toast(tr("saved"));
 }
-["showRT","showMeta","showVotes","showCard","showCards","showHover","showMain","debug"].forEach(k=>$ (k).addEventListener("change",e=>save({[k]:e.target.checked})));
+["showRT","showMeta","showVotes","showCard","showCards","showHover","showMain","debug"].forEach((k)=>$(k).addEventListener("change",(e)=>save({[k]:e.target.checked})));
 $("trailerEnabled").addEventListener("change",async e=>{
  const enabled=e.target.checked;
  if(enabled){const granted=await chrome.permissions.request({origins:["https://api.themoviedb.org/*"]});if(!granted){e.target.checked=false;tmdbStatus("warn",language==="nl"?"Toestemming geweigerd; trailers blijven uit.":"Permission denied; trailers remain off.");return;}}
@@ -196,7 +196,7 @@ $("tmdbSave").addEventListener("click",async()=>{
  const key=$("tmdbKey").value.trim();if(!key)return tmdbStatus("err",language==="nl"?"Plak eerst je TMDb-key.":"Paste your TMDb key first.");
  const granted=await chrome.permissions.request({origins:["https://api.themoviedb.org/*"]});if(!granted)return tmdbStatus("warn",language==="nl"?"Toestemming geweigerd; TMDb-key niet getest.":"Permission denied; TMDb key was not tested.");
  const b=$("tmdbSave");b.disabled=true;b.classList.add("busy");const result=await testTmdbKey(key);b.disabled=false;b.classList.remove("busy");
- if(result==="ok"){await chrome.storage.sync.set({tmdbApiKey:key});tmdbStatus("ok",language==="nl"?"TMDb-key gecontroleerd en opgeslagen.":"TMDb key verified and saved.");}
+ if(result==="ok"){await chrome.storage.sync.set({tmdbApiKey:key});const all=await chrome.storage.local.get(null);await chrome.storage.local.remove(Object.keys(all).filter(k=>k.startsWith("tr1:")));tmdbStatus("ok",language==="nl"?"TMDb-key gecontroleerd en opgeslagen.":"TMDb key verified and saved.");}
  else tmdbStatus("err",language==="nl"?"TMDb-key ongeldig of verbinding mislukt.":"TMDb key invalid or connection failed.");
 });
 $("tmdbEye").addEventListener("click",()=>{const show=$("tmdbKey").type==="password";$("tmdbKey").type=show?"text":"password";$("tmdbEye").textContent=tr(show?"hide":"show");});
