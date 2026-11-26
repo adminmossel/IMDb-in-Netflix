@@ -20,7 +20,20 @@ I made this for my own Netflix browsing and kept adding the bits I wanted to see
 
 <img src="https://github.com/user-attachments/assets/398d4321-1a12-4824-8e28-479e4962d98b" alt="Ratings shown in Netflix" width="755">
 
-The badge has a small pop-in animation. While a rating is loading, it uses a shimmer placeholder. Those effects are part of the extension's CSS in [badge.css](imdb%20in%20netflix/badge.css) — GitHub README pages don't run the extension's CSS, so the screenshots above are the actual visual preview.
+The badge has a small pop-in animation. While a rating is loading, it uses a shimmer placeholder. These are the actual CSS keyframes from [badge.css](imdb%20in%20netflix/badge.css):
+
+```css
+@keyframes imdbPop {
+  from { opacity: 0; transform: scale(.85); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes imdbShimmer {
+  to { background-position: -200% 0; }
+}
+```
+
+GitHub doesn't run the extension's CSS inside a README, so I've kept the screenshots as the visual preview and included the real animation code here.
 
 ## Install it
 
