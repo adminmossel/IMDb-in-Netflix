@@ -127,6 +127,7 @@ async function save(patch) {
 ["showRT","showMeta","showVotes","showCard","showCards","showHover","showMain","debug"].forEach((k)=>$(k).addEventListener("change",(e)=>save({[k]:e.target.checked})));
 $("trailerEnabled").addEventListener("change",async e=>{
  const enabled=e.target.checked;
+ if(enabled && !(await chrome.storage.sync.get(["tmdbApiKey"])).tmdbApiKey){e.target.checked=false;tmdbStatus("warn",language==="nl"?"Voeg eerst een TMDb API-key toe en sla deze op.":"Add and save a TMDb API key first.");return;}
  if(enabled){const granted=await chrome.permissions.request({origins:["https://api.themoviedb.org/*"]});if(!granted){e.target.checked=false;tmdbStatus("warn",language==="nl"?"Toestemming geweigerd; trailers blijven uit.":"Permission denied; trailers remain off.");return;}}
  await save({trailerEnabled:enabled});
 });
