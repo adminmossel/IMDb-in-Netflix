@@ -33,6 +33,12 @@ function typeCompatible(candidateType, requestedType) {
   return true;
 }
 
+function suggestionMediaBucket(qid) {
+  if (/^(tvSeries|tvMiniSeries)$/i.test(qid || "")) return "series";
+  if (/^(movie|tvMovie|tvSpecial|tvShort|short)$/i.test(qid || "")) return "movie";
+  return null;
+}
+
 function suggestionTypeCompatible(qid, requestedType) {
   if (!requestedType) return true;
   if (requestedType === "series") return /^(tvSeries|tvMiniSeries)$/i.test(qid || "");
@@ -119,6 +125,17 @@ async function fetchRating(title, key, year, mediaType) {
       })
   ]);
   dbg.steps.push("suggesties:" + sug.length);
+
+  // If Netflix provides neither type nor year, do not guess when IMDb returns
+  // an exact-title movie AND an exact-title series (e.g. S.W.A.T.).
+  const exactKinds = new Set(sug
+    .filter((x) => sim(x.title, title) >= 0.9 && yearCompatible(x.year, yr))
+    .map((x) => suggestionMediaBucket(x.qid))
+    .filter(Boolean));
+  if (!mediaType && !yr && exactKinds.has("movie") && exactKinds.has("series")) {
+    dbg.steps.push("ambigue titel: zowel film als serie; veilige match overgeslagen");
+    return done({ rating: null });
+  }
 
   if (direct) {
     dbg.steps.push("t:" + (direct.Response === "True" ? direct.Title + "(" + direct.imdbRating + ")" : direct.Error));
