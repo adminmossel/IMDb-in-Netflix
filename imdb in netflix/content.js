@@ -76,7 +76,7 @@ async function netflixInfo(id) {
       const response = await fetch(path + id, { credentials: "include", signal: controller.signal });
       if (!response.ok) return null;
       const finalId = idOf(response.url);
-      if (finalId && finalId !== id) return null;
+      if (finalId !== id) return null;
       return await response.text();
     } catch (e) {
       nfWhy.set(id, "fetch-fout: " + (e && e.message || "onbekend"));
