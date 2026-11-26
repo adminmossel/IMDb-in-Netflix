@@ -25,9 +25,21 @@ const cache = new Map();
 function ask(title, year) {
   const k = title.toLowerCase() + "|" + (year || "");
   if (!cache.has(k)) {
-    cache.set(k, chrome.runtime.sendMessage({ type: "rating", title, year })
-      .catch(() => ({ error: "ctx" }))
-      .then((r) => { r = r || { error: "fetch" }; if (r.error) cache.delete(k); return r; }));
+    cache.set(k, (async () => {
+      let timer;
+      try {
+        const response = await Promise.race([
+          chrome.runtime.sendMessage({ type: "rating", title, year }),
+          new Promise((resolve) => { timer = setTimeout(() => resolve({ error: "fetch" }), 22000); })
+        ]);
+        const r = response || { error: "fetch" };
+        if (r.error === "fetch" || r.error === "ctx") cache.delete(k);
+        return r;
+      } catch {
+        cache.delete(k);
+        return { error: "ctx" };
+      } finally { clearTimeout(timer); }
+    })());
   }
   return cache.get(k);
 }
@@ -206,6 +218,10 @@ function render(host, id, extra) {
     if (host.dataset.imdbId !== id) return;
     host.querySelector(":scope > .imdb-badge")?.remove();
     host.appendChild(build(res, null, extra));
+  }).catch(() => {
+    if (host.dataset.imdbId !== id) return;
+    host.querySelector(":scope > .imdb-badge")?.remove();
+    host.appendChild(build({ error: "fetch" }, null, extra));
   });
 }
 const inView = (r) => r.right > -300 && r.left < innerWidth + 300 && r.bottom > -300 && r.top < innerHeight + 300;
@@ -219,8 +235,6 @@ function scanCards() {
     if (!id) return;
     const r = a.getBoundingClientRect();
     if (r.width < 100 || r.width > 560 || r.height < r.width * 0.42 || !inView(r)) return;
-    const hasArtwork = !!a.querySelector("img, video, [data-uia*='title'], [style*='background-image']");
-    if (!hasArtwork && !a.getAttribute("aria-label") && !a.getAttribute("title")) return;
     if (a.dataset.imdbId === id && a.querySelector(":scope > .imdb-badge")) return;
     render(a, id);
   });
@@ -293,7 +307,9 @@ async function updateMain() {
   loader.classList.add("imdb-main");
   loader.dataset.id = id;
   place(loader);
-  const res = await lookup(id, document.querySelector('[role="dialog"], .previewModal--info, .detail-modal'), meta);
+  let res;
+  try { res = await lookup(id, document.querySelector('[role="dialog"], .previewModal--info, .detail-modal'), meta); }
+  catch { res = { error: "fetch" }; }
   pending = null;
   if (currentId() !== id) return;
   document.querySelector(".imdb-main")?.remove();
