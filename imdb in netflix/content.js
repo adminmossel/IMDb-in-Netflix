@@ -113,7 +113,7 @@ const idCache = new Map();
 function infoFromId(id) {
   if (!idCache.has(id)) {
     idCache.set(id, (async () => {
-      const k = "n2:" + id;
+      const k = "n3:" + id;
       try {
         const st = (await chrome.storage.local.get([k]))[k];
         if (st && Date.now() - st.t < 30 * 864e5) return st.v;
