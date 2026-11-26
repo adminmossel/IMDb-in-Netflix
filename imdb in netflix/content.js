@@ -46,8 +46,8 @@ function ask(title, year, mediaType) {
 }
 
 // ---------- Netflix-id -> titel + jaar ----------
-// Kaartjes dragen geen betrouwbare titel (aria-label/alt zijn vaak leeg of vertaald),
-// maar altijd wel een id in de link. Via de titelpagina halen we naam én jaar op.
+// De link levert alleen de Netflix-ID. De titel zelf komt uitsluitend uit metadata
+// van de bijbehorende Netflix-titelpagina; knoplabels en willekeurige DOM-tekst zijn geen titelbron.
 const GENERIC = /^(netflix|home|browse|play|afspelen|speel af|more info|meer info|info|my list|mijn lijst|series|films|movies|tv shows|zoeken|search|new & popular|nieuw en populair)$/i;
 function cleanTitle(t) {
   t = (t || "").split("|")[0]
@@ -169,24 +169,6 @@ function infoFromId(id) {
     })());
   }
   return idCache.get(id);
-}
-
-// Titels uit de zichtbare pagina zelf (logo-alt, kaart-label, fallback-tekst): vangnet als de titelpagina niets geeft
-function domTitles(host) {
-  const out = [];
-  const add = (t) => {
-    t = cleanTitle(t);
-    if (t && t.length < 90 && !out.some((x) => x.toLowerCase() === t.toLowerCase())) out.push(t);
-  };
-  if (!host) return out;
-  add(host.getAttribute && host.getAttribute("aria-label"));
-  for (let p=host.parentElement,n=0;p&&n<3;p=p.parentElement,n++){add(p.getAttribute&&p.getAttribute("aria-label"));add(p.getAttribute&&p.getAttribute("data-title"));add(p.getAttribute&&p.getAttribute("title"));}
-  add(host.getAttribute && host.getAttribute("title"));
-  add(host.getAttribute && host.getAttribute("data-title"));
-  host.querySelectorAll('img[alt], .fallback-text, h1, h2, h3, [data-uia*="title"], [aria-label], [title]').forEach((e) => {
-    add(e.alt || e.getAttribute("aria-label") || e.getAttribute("title") || e.textContent);
-  });
-  return out;
 }
 
 const resById = new Map();
