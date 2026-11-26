@@ -48,6 +48,8 @@ globalThis.IMDbUI = (() => {
   function makeBadge(res, o, hooks) {
     o = Object.assign({ showMeta: true, showRT: true, showVotes: false, size: "m", style: "badge" }, o);
     hooks = hooks || {};
+    const nl = o.language === "nl";
+    const word = (en, dutch) => nl ? dutch : en;
     const style = ["badge", "compact", "minimal"].includes(o.style) ? o.style : "badge";
     const a = h("a", "imdb-badge imdb-sz-" + o.size + " imdb-style-" + style);
     if (style !== "badge") a.classList.add("imdb-text");
@@ -71,17 +73,17 @@ globalThis.IMDbUI = (() => {
       const dots = h("span", "imdb-dots");
       dots.append(h("i"), h("i"), h("i"));
       a.appendChild(dots);
-      a.title = "IMDb-gegevens laden";
+      a.title = word("Loading IMDb data", "IMDb-gegevens laden");
       return a;
     }
 
-    const noRatingText = res && res.id ? "IMDb · geen score" : "IMDb · niet gevonden";
+    const noRatingText = res && res.id ? word("IMDb · no rating", "IMDb · geen score") : word("IMDb · not found", "IMDb · niet gevonden");
     if (style !== "badge") {
       let text = hasRating ? "IMDb " + number.toFixed(1) : noRatingText;
-      const shortError = res && res.error === "no-key" ? "IMDb · key nodig"
-        : res && res.error === "bad-key" ? "IMDb · key ongeldig"
-        : res && res.error === "limit" ? "IMDb · limiet bereikt"
-        : res && res.error ? "IMDb · niet beschikbaar" : null;
+      const shortError = res && res.error === "no-key" ? word("IMDb · API key needed", "IMDb · key nodig")
+        : res && res.error === "bad-key" ? word("IMDb · invalid key", "IMDb · key ongeldig")
+        : res && res.error === "limit" ? word("IMDb · daily limit", "IMDb · limiet bereikt")
+        : res && res.error ? word("IMDb · unavailable", "IMDb · niet beschikbaar") : null;
       if (!hasRating && shortError) text = shortError;
       if (style === "compact") {
         if (o.showRT && hasRT) text += " · RT " + res.rt + "%";
@@ -92,7 +94,7 @@ globalThis.IMDbUI = (() => {
       if (res && res.error) a.title = "IMDb: " + res.error + detail;
       else a.title = hasRating ? "IMDb " + number.toFixed(1) + "/10" + detail : noRatingText + detail;
       if (res && res.error === "no-key") {
-        a.title = "Klik om je gratis OMDb-key in te stellen";
+        a.title = word("Click to set up your free OMDb key", "Klik om je gratis OMDb-key in te stellen");
         a.href = "#";
         a.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); hooks.onOptions && hooks.onOptions(); });
       } else setLink();
@@ -120,7 +122,7 @@ globalThis.IMDbUI = (() => {
         a.append(logo(), star(), sc);
       } else {
         a.classList.add("imdb-muted");
-        a.append(logo(), h("span", "imdb-score-label", res && res.id ? "geen IMDb-score" : "IMDb-score ontbreekt"));
+        a.append(logo(), h("span", "imdb-score-label", res && res.id ? word("no IMDb rating", "geen IMDb-score") : word("IMDb rating unavailable", "IMDb-score ontbreekt")));
       }
 
       const v = o.showVotes && fmtVotes(res && res.votes);
@@ -142,13 +144,13 @@ globalThis.IMDbUI = (() => {
     }
 
     const e = res && res.error;
-    if (e === "no-key") err("key instellen", "Klik om je gratis OMDb-key in te stellen", true);
-    else if (e === "bad-key") err("key ongeldig", "Klik om je OMDb-key te controleren", true);
-    else if (e === "limit") err("daglimiet bereikt", "OMDb staat 1.000 aanvragen per dag toe. Morgen werkt het weer.");
-    else if (e === "ctx") err("ververs pagina", "De extensie is bijgewerkt: ververs de pagina");
-    else if (e === "fetch") err("ophalen mislukt", "De gegevens konden niet worden opgehaald. Probeer het later opnieuw.");
-    else if (e) err("niet beschikbaar", "Ophalen mislukt: " + e);
-    else err("geen IMDb-score", "Geen betrouwbare IMDb-match gevonden" + detail);
+    if (e === "no-key") err(word("set API key", "key instellen"), word("Click to set up your free OMDb key", "Klik om je gratis OMDb-key in te stellen"), true);
+    else if (e === "bad-key") err(word("invalid API key", "key ongeldig"), word("Click to check your OMDb key", "Klik om je OMDb-key te controleren"), true);
+    else if (e === "limit") err(word("daily limit reached", "daglimiet bereikt"), word("OMDb allows 1,000 requests per day. Try again tomorrow.", "OMDb staat 1.000 aanvragen per dag toe. Morgen werkt het weer."));
+    else if (e === "ctx") err(word("refresh page", "ververs pagina"), word("The extension was updated. Refresh Netflix.", "De extensie is bijgewerkt: ververs de pagina"));
+    else if (e === "fetch") err(word("could not load", "ophalen mislukt"), word("The data could not be retrieved. Try again later.", "De gegevens konden niet worden opgehaald. Probeer het later opnieuw."));
+    else if (e) err(word("unavailable", "niet beschikbaar"), word("Could not retrieve: ", "Ophalen mislukt: ") + e);
+    else err(word("no IMDb rating", "geen IMDb-score"), word("No reliable IMDb match was found", "Geen betrouwbare IMDb-match gevonden") + detail);
     return a;
   }
 
@@ -160,7 +162,9 @@ globalThis.IMDbUI = (() => {
     return d;
   };
 
-  function buildCard(res) {
+  function buildCard(res, language) {
+    const nl = language === "nl";
+    const word = (en, dutch) => nl ? dutch : en;
     const card = h("div", "imdb-card");
     if (res.poster) {
       const img = h("img");
@@ -171,7 +175,7 @@ globalThis.IMDbUI = (() => {
     const body = h("div", "imdb-card-body");
     body.appendChild(h("div", "imdb-card-title", (res.title || "") + (res.year ? " (" + res.year + ")" : "")));
 
-    const sub = [res.rated, res.runtime, res.type === "series" ? "Serie" : res.type === "movie" ? "Film" : null]
+    const sub = [res.rated, res.runtime, res.type === "series" ? word("Series", "Serie") : res.type === "movie" ? word("Movie", "Film") : null]
       .filter(Boolean).join(" · ");
     if (sub) body.appendChild(h("div", "imdb-card-sub", sub));
 
@@ -180,10 +184,10 @@ globalThis.IMDbUI = (() => {
       const big = h("div", "imdb-big imdb-t-" + tier(parseFloat(res.rating)));
       big.append(star(), h("span", "n", parseFloat(res.rating).toFixed(1)), h("small", null, "/10"));
       const v = fmtVotes(res.votes);
-      if (v) big.append(h("em", null, v + " stemmen"));
+      if (v) big.append(h("em", null, v + " " + word("votes", "stemmen")));
       sc.appendChild(big);
     } else {
-      sc.appendChild(h("span", "imdb-card-no-rating", res.id ? "Nog geen IMDb-score" : "Geen IMDb-score beschikbaar"));
+      sc.appendChild(h("span", "imdb-card-no-rating", res.id ? word("No IMDb rating yet", "Nog geen IMDb-score") : word("No IMDb rating available", "Geen IMDb-score beschikbaar")));
     }
     if (res.rt != null) {
       const c = h("span", "imdb-chip imdb-rt");
@@ -199,7 +203,7 @@ globalThis.IMDbUI = (() => {
       body.appendChild(g);
     }
     if (res.plot) body.appendChild(h("p", null, res.plot));
-    [row("Regie", res.director), row("Cast", res.actors), row("Awards", res.awards), row("Box office", res.boxOffice)]
+    [row(word("Director", "Regie"), res.director), row("Cast", res.actors), row("Awards", res.awards), row("Box office", res.boxOffice)]
       .forEach((r) => r && body.appendChild(r));
     card.appendChild(body);
     return card;
