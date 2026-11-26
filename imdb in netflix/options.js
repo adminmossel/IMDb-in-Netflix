@@ -214,9 +214,7 @@ $("diag").addEventListener("click", async () => {
     const bg = await chrome.runtime.sendMessage({ type: "rating", title: dq, year: dy, nocache: true });
     L.push("Extensie voor \"" + dq + "\": " + JSON.stringify(bg).slice(0, 500));
   } catch (e) { L.push(tr("fetchError") + e.message); }
-  out.textContent = L.join("
-
-");
+  out.textContent = L.join("\n\n");
 });
 
 $("ver").textContent = "Versie " + chrome.runtime.getManifest().version;
