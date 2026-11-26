@@ -279,6 +279,26 @@ function render(host, id, extra) {
 const inView = (r) => r.right > -300 && r.left < innerWidth + 300 && r.bottom > -300 && r.top < innerHeight + 300;
 
 // ---------- badges op de kaartjes in de rijen ----------
+// Netflix wisselt regelmatig de DOM-opbouw: soms zit de poster in de link,
+// soms staat de afbeelding als buur-element in dezelfde kaartcontainer.
+const POSTER_SELECTOR = 'img, video, [data-uia*="boxart"], [class*="boxart"], [style*="background-image"]';
+function cardHostForLink(a, id) {
+  let node = a;
+  for (let depth = 0; node && depth < 8; depth++, node = node.parentElement) {
+    const r = node.getBoundingClientRect();
+    if (r.width < 64 || r.width > 620 || r.height < r.width * 0.38 || !inView(r)) continue;
+    const hasPoster = node.matches(POSTER_SELECTOR) || !!node.querySelector(POSTER_SELECTOR);
+    if (!hasPoster) continue;
+
+    const links = [...node.querySelectorAll('a[href*="/watch/"], a[href*="/title/"]')];
+    if (node.matches('a[href*="/watch/"], a[href*="/title/"]')) links.unshift(node);
+    const ids = new Set(links.map((link) => idOf(link.getAttribute("href"))).filter(Boolean));
+    // Een container met meerdere verschillende titels is een rij, geen individuele kaart.
+    if (ids.size === 1 && ids.has(id)) return node;
+  }
+  return null;
+}
+
 function scanCards() {
   if (!S.showCards) return;
   document.querySelectorAll('a[href*="/watch/"], a[href*="/title/"]').forEach((a) => {
@@ -286,16 +306,12 @@ function scanCards() {
     const id = idOf(a.getAttribute("href"));
     if (!id) return;
 
-    // Alleen echte poster-/titelkaarten. Gewone navigatielinks mogen nooit een overlay krijgen:
-    // dat kan Netflix' eigen hover- en schaalanimaties verstoren.
-    const poster = a.querySelector('img, video, [data-uia*="boxart"], [class*="boxart"], [style*="background-image"]');
-    if (!poster) return;
-
-    const r = a.getBoundingClientRect();
-    if (r.width < 64 || r.width > 620 || r.height < r.width * 0.38 || !inView(r)) return;
-    a.classList.toggle("imdb-host-mini", r.width < 140);
-    if (a.dataset.imdbId === id && a.querySelector(":scope > .imdb-badge")) return;
-    render(a, id);
+    const host = cardHostForLink(a, id);
+    if (!host) return;
+    const r = host.getBoundingClientRect();
+    host.classList.toggle("imdb-host-mini", r.width < 140);
+    if (host.dataset.imdbId === id && host.querySelector(":scope > .imdb-badge")) return;
+    render(host, id);
   });
 }
 
@@ -306,7 +322,8 @@ function scanHover() {
   document.querySelectorAll('[data-uia*="play"], button[aria-label], a[aria-label]').forEach((el) => {
     const label = el.getAttribute("aria-label") || "";
     if (!(PLAY.test(label) || /play-button/.test(el.getAttribute("data-uia") || ""))) return;
-    if (!el.offsetParent || el.closest('[role="dialog"], .previewModal--container, .detail-modal')) return;
+    // Ook preview-modals meenemen: Netflix plaatst de hover-preview vaak in een dialog/container.
+    if (!el.offsetParent) return;
     // klim op tot de grootste omhullende die nog bij precies één titel hoort (= de hele mini-kaart)
     let best = null, c = el.parentElement;
     for (let n = 0; c && n < 14; n++, c = c.parentElement) {
