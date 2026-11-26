@@ -1,18 +1,38 @@
 {
   "manifest_version": 3,
   "name": "IMDb Rating voor Netflix",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Toont IMDb-scores en optionele trailers op Netflix.",
-  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
-  "permissions": ["storage"],
-  "host_permissions": ["https://www.omdbapi.com/*", "https://v2.sg.media-imdb.com/*"],
-  "optional_host_permissions": ["https://api.themoviedb.org/*"],
-  "background": { "service_worker": "background.js" },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.omdbapi.com/*",
+    "https://v2.sg.media-imdb.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://api.themoviedb.org/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
-      "matches": ["https://www.netflix.com/*"],
-      "js": ["badge.js", "content.js"],
-      "css": ["badge.css"],
+      "matches": [
+        "https://www.netflix.com/*"
+      ],
+      "js": [
+        "badge.js",
+        "content.js"
+      ],
+      "css": [
+        "badge.css"
+      ],
       "run_at": "document_idle"
     }
   ],
