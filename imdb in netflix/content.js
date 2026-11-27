@@ -81,9 +81,15 @@ async function netflixInfo(id) {
     const timeout = setTimeout(() => controller.abort(), 8000);
     try {
       const response = await fetch(path + id, { credentials: "include", signal: controller.signal });
-      if (!response.ok) return null;
+      if (!response.ok) {
+        nfWhy.set(id, path + " gaf HTTP " + response.status);
+        return null;
+      }
       const finalId = idOf(response.url);
-      if (finalId !== id) return null;
+      if (finalId !== id) {
+        nfWhy.set(id, path + " werd omgeleid naar een andere URL: " + response.url);
+        return null;
+      }
       return await response.text();
     } catch (e) {
       nfWhy.set(id, "fetch-fout: " + (e && e.message || "onbekend"));
@@ -163,7 +169,11 @@ async function netflixInfo(id) {
       : /movie|film/i.test(ogType) || /movie/i.test(rawType || "") ? "movie" : null;
     const releaseYear = parseInt((html.match(/"releaseYear"\s*:\s*(\d{4})/) || [])[1], 10) || null;
     const title = chosen?.title || pageTitle;
-    if (!title) return null;
+    if (!title) {
+      nfWhy.set(id, "Geen titel in Netflix-metadata; paginatitels=" +
+        (pageTitles.slice(0, 3).join(" | ") || "geen") + "; schema-objecten=" + typed.length);
+      return null;
+    }
     return {
       title,
       aliases: chosen?.aliases || [],
@@ -185,7 +195,7 @@ const idCache = new Map();
 function infoFromId(id) {
   if (!idCache.has(id)) {
     idCache.set(id, (async () => {
-      const k = "n10:" + id;
+      const k = "n11:" + id;
       try {
         const st = (await chrome.storage.local.get([k]))[k];
         if (st && Date.now() - st.t < 30 * 864e5) return st.v;
