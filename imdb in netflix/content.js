@@ -75,24 +75,43 @@ function nfLimit(fn) {
 function nfPump() { while (nfActive < 3 && nfQueue.length) { nfActive++; nfQueue.shift()(); } }
 
 const nfWhy = new Map();
+const nfTrace = new Map();
 async function netflixInfo(id) {
+  nfTrace.set(id, []);
+  const trace = (message) => {
+    const items = nfTrace.get(id) || [];
+    if (items.length < 8) items.push("netflix-fetch: " + message);
+    nfTrace.set(id, items);
+  };
   const fetchPage = async (path) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
     try {
       const response = await fetch(path + id, { credentials: "include", signal: controller.signal });
+      const finalUrl = new URL(response.url);
       if (!response.ok) {
+        trace(path + " HTTP " + response.status + "; eindpad=" + finalUrl.pathname);
         nfWhy.set(id, path + " gaf HTTP " + response.status);
         return null;
       }
       const finalId = idOf(response.url);
       if (finalId !== id) {
-        nfWhy.set(id, path + " werd omgeleid naar een andere URL: " + response.url);
+        trace(path + " redirect naar " + finalUrl.pathname + "; verwacht ID " + id);
+        nfWhy.set(id, path + " werd omgeleid naar een andere URL: " + finalUrl.pathname);
         return null;
       }
-      return await response.text();
+      const html = await response.text();
+      const scriptCount = (html.match(/<script\\b/gi) || []).length;
+      trace(path + " HTTP " + response.status + "; eindpad=" + finalUrl.pathname +
+        "; tekens=" + html.length + "; scripts=" + scriptCount +
+        "; reactContext=" + (/netflix\\.reactContext\\s*=/.test(html) ? "ja" : "nee") +
+        "; h1=" + (/<h1\\b/i.test(html) ? "ja" : "nee") +
+        "; metadata=" + (/data-uia=["']metadata["']/i.test(html) ? "ja" : "nee"));
+      return html;
     } catch (e) {
-      nfWhy.set(id, "fetch-fout: " + (e && e.message || "onbekend"));
+      const reason = e && e.name === "AbortError" ? "timeout" : (e && e.message || "onbekend");
+      trace(path + " fetch-fout=" + reason);
+      nfWhy.set(id, "fetch-fout: " + reason);
       return null;
     } finally { clearTimeout(timeout); }
   };
@@ -240,8 +259,10 @@ async function netflixInfo(id) {
     const factsYear = parseInt(facts.find(value => /^(19|20)\d{2}$/.test(value)) || "", 10) || null;
     const title = chosen?.title || pageTitle;
     if (!title) {
-      nfWhy.set(id, "Geen titel in Netflix-metadata; paginatitels=" +
-        (pageTitles.slice(0, 3).join(" | ") || "geen") + "; schema-objecten=" + typed.length);
+      nfWhy.set(id, "Geen titel in Netflix-metadata; reactContext=" +
+        (/netflix\\.reactContext\\s*=/.test(html) ? "ja" : "nee") +
+        "; paginatitels=" + (pageTitles.slice(0, 3).join(" | ") || "geen") +
+        "; schema-objecten=" + typed.length);
       return null;
     }
     return {
@@ -302,7 +323,8 @@ async function lookup(id) {
 async function lookup1(id) {
   const info = await infoFromId(id);
   if (!info || !info.title) {
-    return { rating: null, dbg: { q: "(geen betrouwbare Netflix-titel)", y: null, steps: ["id " + id, "netflix: " + (nfWhy.get(id) || "geen titelmetadata")] } };
+    return { rating: null, dbg: { q: "(geen betrouwbare Netflix-titel)", y: null,
+      steps: ["id " + id, "netflix: " + (nfWhy.get(id) || "geen titelmetadata"), ...(nfTrace.get(id) || [])] } };
   }
 
   const candidates = [info.title, ...(info.aliases || [])]
