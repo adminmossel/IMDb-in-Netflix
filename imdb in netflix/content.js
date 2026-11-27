@@ -240,6 +240,9 @@ async function netflixInfo(id) {
     const fallbackType = /tv|series|show/i.test(ogType) || /series/i.test(rawType || "") ? "series"
       : /movie|film/i.test(ogType) || /movie/i.test(rawType || "") ? "movie" : null;
     const releaseYear = parseInt((html.match(/"releaseYear"\s*:\s*(\d{4})/) || [])[1], 10) || null;
+    const facts = [...doc.querySelectorAll('[data-uia="metadata"] ul li')]
+      .map(node => (node.textContent || "").replace(/[\u2066-\u2069]/g, "").trim());
+    const factsYear = parseInt(facts.find(value => /^(19|20)\d{2}$/.test(value)) || "", 10) || null;
     const title = chosen?.title || pageTitle;
     if (!title) {
       nfWhy.set(id, "Geen titel in Netflix-metadata; paginatitels=" +
@@ -249,7 +252,7 @@ async function netflixInfo(id) {
     return {
       title,
       aliases: chosen?.aliases || [],
-      year: chosen?.year || releaseYear,
+      year: chosen?.year || releaseYear || factsYear,
       mediaType: chosen?.mediaType || fallbackType
     };
   };
@@ -389,15 +392,19 @@ function isVerifiedRating(res) {
 }
 
 function saveNetflixDiagnostic(id, res) {
-  if (isVerifiedRating(res)) return;
+  const verified = isVerifiedRating(res);
   const detail = res && res.dbg || {};
   const snapshot = {
     time: Date.now(),
     netflixId: id,
-    title: detail.q || null,
-    year: detail.y || null,
+    title: verified ? res.title : (detail.q || null),
+    year: verified ? (res.year || detail.y || null) : (detail.y || null),
+    imdbId: verified ? res.id : null,
+    rating: verified ? Number(res.rating) : null,
     error: res && res.error || null,
-    steps: Array.isArray(detail.steps) ? detail.steps : []
+    steps: verified
+      ? ["Bevestigde IMDb-match: " + res.title, "IMDb-ID: " + res.id, "Score: " + res.rating]
+      : (Array.isArray(detail.steps) ? detail.steps : [])
   };
   chrome.storage.local.set({ lastNetflixDebug: snapshot }).catch(() => {});
 }
