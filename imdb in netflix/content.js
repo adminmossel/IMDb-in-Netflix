@@ -178,7 +178,7 @@ const idCache = new Map();
 function infoFromId(id) {
   if (!idCache.has(id)) {
     idCache.set(id, (async () => {
-      const k = "n9:" + id;
+      const k = "n10:" + id;
       try {
         const st = (await chrome.storage.local.get([k]))[k];
         if (st && Date.now() - st.t < 30 * 864e5) return st.v;
@@ -333,11 +333,13 @@ function cardHostForLink(a, id) {
   for (let depth = 0; node && depth < 8; depth++, node = node.parentElement) {
     const r = node.getBoundingClientRect();
     if (r.width < 64 || r.width > 620 || r.height < r.width * 0.38 || !inView(r)) continue;
+    // Gebruik altijd een div/container als host, nooit de titel-link zelf:
+    // de badge is ook een link en mag dus geen geneste <a> worden.
+    if (node.tagName === "A") continue;
     const hasPoster = node.matches(POSTER_SELECTOR) || !!node.querySelector(POSTER_SELECTOR);
     if (!hasPoster) continue;
 
     const links = [...node.querySelectorAll('a[href*="/watch/"], a[href*="/title/"]')];
-    if (node.matches('a[href*="/watch/"], a[href*="/title/"]')) links.unshift(node);
     const ids = new Set(links.map((link) => idOf(link.getAttribute("href"))).filter(Boolean));
     // Een container met meerdere verschillende titels is een rij, geen individuele kaart.
     if (ids.size === 1 && ids.has(id)) return node;
@@ -395,7 +397,7 @@ function scanHover() {
 // ---------- grote badge op een echte titelpagina ----------
 function currentId() {
   // Geen jbv-queryparameter gebruiken: die kan op browse-/previewpagina's wisselen.
-  const match = location.pathname.match(/^\/title\/(\d{5,})(?:\/|$)/);
+  const match = location.pathname.match(/^\/(?:[a-z]{2}(?:-[A-Z]{2})\/)?title\/(\d{5,})(?:\/|$)/i);
   return match ? match[1] : null;
 }
 function place(badge) {
