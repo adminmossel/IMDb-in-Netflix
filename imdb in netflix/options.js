@@ -85,6 +85,8 @@ async function refreshNetflixDiagnostic() {
    "Netflix-ID: " + (snapshot.netflixId || "onbekend"),
    "Netflix-titel: " + (snapshot.title || "niet uitgelezen"),
    "Jaar: " + (snapshot.year || "onbekend"),
+   "IMDb-ID: " + (snapshot.imdbId || "geen match"),
+   "IMDb-score: " + (snapshot.rating == null ? "geen" : snapshot.rating),
    "Fout: " + (snapshot.error || "geen"),
    ...(snapshot.steps || [])
   ];
