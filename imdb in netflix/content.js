@@ -101,11 +101,11 @@ async function netflixInfo(id) {
         return null;
       }
       const html = await response.text();
-      const scriptCount = (html.match(/<script\\b/gi) || []).length;
+      const scriptCount = (html.match(/<script\b/gi) || []).length;
       trace(path + " HTTP " + response.status + "; eindpad=" + finalUrl.pathname +
         "; tekens=" + html.length + "; scripts=" + scriptCount +
-        "; reactContext=" + (/netflix\\.reactContext\\s*=/.test(html) ? "ja" : "nee") +
-        "; h1=" + (/<h1\\b/i.test(html) ? "ja" : "nee") +
+        "; reactContext=" + (/netflix\.reactContext\s*=/.test(html) ? "ja" : "nee") +
+        "; h1=" + (/<h1\b/i.test(html) ? "ja" : "nee") +
         "; metadata=" + (/data-uia=["']metadata["']/i.test(html) ? "ja" : "nee"));
       return html;
     } catch (e) {
@@ -260,7 +260,7 @@ async function netflixInfo(id) {
     const title = chosen?.title || pageTitle;
     if (!title) {
       nfWhy.set(id, "Geen titel in Netflix-metadata; reactContext=" +
-        (/netflix\\.reactContext\\s*=/.test(html) ? "ja" : "nee") +
+        (/netflix\.reactContext\s*=/.test(html) ? "ja" : "nee") +
         "; paginatitels=" + (pageTitles.slice(0, 3).join(" | ") || "geen") +
         "; schema-objecten=" + typed.length);
       return null;
