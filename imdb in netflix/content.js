@@ -14,11 +14,13 @@ chrome.storage.onChanged.addListener((c, area) => {
 function resetAll() {
   hideCard();
   document.querySelectorAll(".imdb-badge").forEach((b) => b.remove());
-  document.querySelectorAll("[data-imdb-id], [data-imdb-fail], [data-imdb-pending], [data-imdb-no-rating]").forEach((e) => {
+  document.querySelectorAll("[data-imdb-id], [data-imdb-fail], [data-imdb-pending], [data-imdb-no-rating], [data-imdb-hover]").forEach((e) => {
     delete e.dataset.imdbId;
     delete e.dataset.imdbFail;
     delete e.dataset.imdbPending;
     delete e.dataset.imdbNoRating;
+    delete e.dataset.imdbHover;
+    e.classList.remove("imdb-host-mini");
   });
   resById.clear();
   idCache.clear();
@@ -414,7 +416,9 @@ function scanHover() {
         const ids = new Set([...c.querySelectorAll('a[href*="/watch/"], a[href*="/title/"]')]
           .map((x) => idOf(x.getAttribute("href"))).filter(Boolean));
         if (ids.size > 1) break;
-        if (ids.size === 1 && c.tagName !== "A") best = c;
+        // Kies de kleinste ancestor die al de afbeelding en één titel-ID bevat.
+        // Verder omhoog klimmen verplaatst het badge vaak naar een hele preview-wrapper.
+        if (ids.size === 1 && c.tagName !== "A") { best = c; break; }
       }
     }
     if (!best || best.querySelector(".imdb-main")) return;
