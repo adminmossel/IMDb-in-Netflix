@@ -98,14 +98,9 @@ async function netflixInfo(id) {
   };
 
   const lang = String(document.documentElement.lang || "en").toLowerCase().split("-")[0];
-  // Probeer zowel de lokale Netflix-URL als de generieke routes. Een 200-response
-  // kan nog steeds een app-shell zonder titelmetadata bevatten.
-  const paths = ["/" + lang + "/title/", "/title/", "/watch/"];
-  const pages = await Promise.all(paths.map(fetchPage)).then(results => results.filter(Boolean));
-  if (!pages.length) {
-    nfWhy.set(id, nfWhy.get(id) || "Netflix gaf geen metadata voor deze titel-ID");
-    return null;
-  }
+  // Begin met de lokale titelpagina. Pas als die geen bruikbare metadata heeft,
+  // worden de generieke titel- en watch-routes geprobeerd.
+  const primaryHtml = await fetchPage("/" + lang + "/title/");
 
   const refersToId = (value) => {
     if (typeof value !== "string") return false;
@@ -257,12 +252,18 @@ async function netflixInfo(id) {
     };
   };
 
-  // De /title/{id}-pagina is de primaire bron. /watch/{id} is alleen een reserve.
-  for (const html of pages) {
+  if (primaryHtml) {
+    const result = pageInfo(primaryHtml);
+    if (result) return result;
+  }
+  // Fallbacks alleen ophalen wanneer de gelokaliseerde titelpagina geen titel opleverde.
+  for (const path of ["/title/", "/watch/"]) {
+    const html = await fetchPage(path);
+    if (!html) continue;
     const result = pageInfo(html);
     if (result) return result;
   }
-  nfWhy.set(id, "Netflix-pagina bevat geen titelmetadata die aan deze titel-ID gekoppeld kon worden");
+  nfWhy.set(id, nfWhy.get(id) || "Netflix-pagina bevat geen titelmetadata die aan deze titel-ID gekoppeld kon worden");
   return null;
 }
 
