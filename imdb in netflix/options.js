@@ -88,7 +88,7 @@ async function refreshNetflixDiagnostic() {
    "Fout: " + (snapshot.error || "geen"),
    ...(snapshot.steps || [])
   ];
-  $("lastNetflixDiag").textContent = lines.join("\\n");
+  $("lastNetflixDiag").textContent = lines.join("\n");
  } catch (error) {
   $("lastNetflixDiag").textContent = "Diagnose niet beschikbaar: " + (error && error.message || "onbekende fout");
  }
