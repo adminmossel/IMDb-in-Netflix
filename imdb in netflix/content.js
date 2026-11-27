@@ -316,6 +316,20 @@ function isVerifiedRating(res) {
   return !!(res && res.verified === true && Number.isFinite(rating) && rating >= 0 && rating <= 10 && /^tt\d{5,}$/.test(res.id || ""));
 }
 
+function saveNetflixDiagnostic(id, res) {
+  if (isVerifiedRating(res)) return;
+  const detail = res && res.dbg || {};
+  const snapshot = {
+    time: Date.now(),
+    netflixId: id,
+    title: detail.q || null,
+    year: detail.y || null,
+    error: res && res.error || null,
+    steps: Array.isArray(detail.steps) ? detail.steps : []
+  };
+  chrome.storage.local.set({ lastNetflixDebug: snapshot }).catch(() => {});
+}
+
 function build(res, size, extra) {
   if (!isVerifiedRating(res)) return null;
   const displayRes = { ...res, dbg: S.debug ? res.dbg : null };
@@ -355,6 +369,7 @@ function render(host, id, extra) {
   lookup(id).then((res) => {
     if (host.dataset.imdbId !== id || host.dataset.imdbPending !== id) return;
     delete host.dataset.imdbPending;
+    saveNetflixDiagnostic(id, res);
     host.querySelector(":scope > .imdb-badge")?.remove();
     const badge = build(res, null, extra) || buildDebugBadge(res, null, extra);
     if (badge) host.appendChild(badge);
@@ -490,6 +505,7 @@ async function updateMain() {
   try { res = await lookup(id); } catch {}
   finally { if (pendingMain === id) pendingMain = null; }
   if (!S.showMain || currentId() !== id) return;
+  saveNetflixDiagnostic(id, res);
   const badge = build(res, BIGGER[S.size] || "l") || buildDebugBadge(res, BIGGER[S.size] || "l");
   if (!badge) return;
   badge.classList.add("imdb-main");
