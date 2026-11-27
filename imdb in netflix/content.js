@@ -80,7 +80,7 @@ async function netflixInfo(id) {
   nfTrace.set(id, []);
   const trace = (message) => {
     const items = nfTrace.get(id) || [];
-    if (items.length < 8) items.push("netflix-fetch: " + message);
+    if (items.length < 12) items.push("netflix-fetch: " + message);
     nfTrace.set(id, items);
   };
   const fetchPage = async (path) => {
@@ -132,17 +132,22 @@ async function netflixInfo(id) {
   // in every server-rendered title page.
   const reactContextInfo = (html) => {
     const scripts = html.match(/<script\b[^>]*>[\s\S]*?<\/script>/gi) || [];
+    trace("scripts=" + scripts.length + "; reactContext-assignment=" +
+      (scripts.some(script => /netflix\.reactContext\s*=/.test(script)) ? "ja" : "nee"));
     for (const script of scripts) {
       const match = script.match(/netflix\.reactContext\s*=\s*(\{[\s\S]*?\});\s*<\/script>/i);
       if (!match) continue;
+      trace("reactContext assignment-regex=match");
       try {
         const source = match[1].replace(/\\x([0-9a-f]{2})/gi, (_all, hex) => "\\u00" + hex);
         const context = JSON.parse(source);
+        trace("reactContext JSON=parse-ok");
         const nm = context?.models?.nmTitleGQL?.data;
         const meta = nm?.metaData || {};
         const exactMetaId = String(meta.videoId || meta.topLevelVideoId || "");
         const nmTitle = cleanTitle(nm?.copy?.title);
         if (exactMetaId === id && nmTitle) {
+          trace("reactContext nmTitleGQL exact-ID=hit");
           let graphVideo = null;
           const walk = (node) => {
             if (!node || graphVideo) return;
@@ -178,6 +183,7 @@ async function netflixInfo(id) {
         };
         walk(context?.models?.graphqlClcs?.data);
         if (graphVideo) {
+          trace("reactContext graphqlClcs exact-ID=hit");
           const rawType = String(graphVideo.__typename || graphVideo.type || "").toLowerCase();
           return {
             title: cleanTitle(graphVideo.title),
@@ -186,7 +192,9 @@ async function netflixInfo(id) {
             mediaType: rawType === "movie" ? "movie" : "series"
           };
         }
-      } catch {}
+      } catch {
+        trace("reactContext JSON=parse-failed");
+      }
     }
     return null;
   };
