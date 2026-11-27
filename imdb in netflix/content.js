@@ -98,10 +98,10 @@ async function netflixInfo(id) {
   };
 
   const lang = String(document.documentElement.lang || "en").toLowerCase().split("-")[0];
-  const localizedTitleHtml = await fetchPage("/" + lang + "/title/");
-  const titleHtml = localizedTitleHtml || await fetchPage("/title/");
-  const watchHtml = titleHtml ? null : await fetchPage("/watch/");
-  const pages = [titleHtml, watchHtml].filter(Boolean);
+  // Probeer zowel de lokale Netflix-URL als de generieke routes. Een 200-response
+  // kan nog steeds een app-shell zonder titelmetadata bevatten.
+  const paths = ["/" + lang + "/title/", "/title/", "/watch/"];
+  const pages = await Promise.all(paths.map(fetchPage)).then(results => results.filter(Boolean));
   if (!pages.length) {
     nfWhy.set(id, nfWhy.get(id) || "Netflix gaf geen metadata voor deze titel-ID");
     return null;
@@ -200,7 +200,7 @@ const idCache = new Map();
 function infoFromId(id) {
   if (!idCache.has(id)) {
     idCache.set(id, (async () => {
-      const k = "n12:" + id;
+      const k = "n13:" + id;
       try {
         const st = (await chrome.storage.local.get([k]))[k];
         if (st && Date.now() - st.t < 30 * 864e5) return st.v;
@@ -442,32 +442,31 @@ function scanCards() {
 const PLAY = /^(play|afspelen|speel af|resume|hervat|doorgaan|continue)/i;
 function scanHover() {
   if (!S.showHover || currentId()) return;
-  document.querySelectorAll('[data-uia*="play"], button[aria-label], a[aria-label]').forEach((el) => {
+  document.querySelectorAll('[data-uia*="play"], button[aria-label]').forEach((el) => {
     const label = el.getAttribute("aria-label") || "";
     if (!(PLAY.test(label) || /play-button/.test(el.getAttribute("data-uia") || ""))) return;
-    // Ook preview-modals meenemen: Netflix plaatst de hover-preview vaak in een dialog/container.
     if (!el.offsetParent) return;
-    // klim op tot de grootste omhullende die nog bij precies één titel hoort (= de hele mini-kaart)
-    let best = null, c = el.parentElement;
-    for (let n = 0; c && n < 14; n++, c = c.parentElement) {
-      if (c.getBoundingClientRect().width > 720) break;
-      if (c.getBoundingClientRect().width >= 250 && c.querySelector("img, video")) {
-        const ids = new Set([...c.querySelectorAll('a[href*="/watch/"], a[href*="/title/"]')]
-          .map((x) => idOf(x.getAttribute("href"))).filter(Boolean));
-        if (ids.size > 1) break;
-        // Kies de kleinste ancestor die al de afbeelding en één titel-ID bevat.
-        // Verder omhoog klimmen verplaatst het badge vaak naar een hele preview-wrapper.
-        if (ids.size === 1 && c.tagName !== "A") { best = c; break; }
-      }
-    }
-    if (!best || best.querySelector(".imdb-main")) return;
-    const link = best.querySelector('a[href*="/watch/"], a[href*="/title/"]') || (el.matches("a[href]") ? el : null);
-    const id = idOf(link && link.getAttribute("href"));
-    if (!id) return;
-    if (best.dataset.imdbId === id && (best.querySelector(":scope > .imdb-badge") || best.dataset.imdbNoRating === id)) return;
-    best.dataset.imdbHover = "1";
-    best.querySelectorAll("a > .imdb-badge").forEach((b) => b.remove());   // geen dubbele badge
-    render(best, id, "imdb-hover");
+
+    // Alleen de echte Netflix-preview-modal gebruiken. Geen willekeurige ancestors
+    // of rijcontainers: die veroorzaakten badges op vreemde en dubbele plekken.
+    const modal = el.closest(".focus-trap-wrapper.previewModal--wrapper.mini-modal, .previewModal--wrapper.mini-modal");
+    if (!modal) return;
+    const links = [...modal.querySelectorAll('a[href*="/watch/"], a[href*="/title/"]')];
+    const ids = new Set(links.map(link => idOf(link.getAttribute("href"))).filter(Boolean));
+    if (ids.size !== 1) return;
+    const id = [...ids][0];
+
+    const host = modal.querySelector(".previewModal--info") ||
+      modal.querySelector('[data-uia="metadata"]') || modal;
+    if (!host || host.tagName === "A") return;
+    if (host.dataset.imdbId === id && (
+      host.querySelector(":scope > .imdb-badge") ||
+      host.dataset.imdbPending === id ||
+      host.dataset.imdbNoRating === id
+    )) return;
+
+    host.dataset.imdbHover = "1";
+    render(host, id, "imdb-hover");
   });
 }
 
