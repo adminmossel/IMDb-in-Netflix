@@ -198,6 +198,12 @@ button{font:inherit;cursor:pointer}
     <div class="inp"><input id="dq" value="Turning Point: The Vietnam War" aria-label="Titel"><input id="dy" value="2025" style="max-width:90px" aria-label="Jaar"></div>
     <button id="diag" class="primary" type="button" data-i18n="startDiagnosis">Run diagnosis</button>
     <pre id="diagOut" style="white-space:pre-wrap;word-break:break-all;margin:14px 0 0;color:var(--mut);font:12px/1.5 Consolas,monospace"></pre>
+    <div style="margin-top:22px;padding-top:16px;border-top:1px solid var(--line)">
+      <h3 id="netflixDiagHeading">Laatste Netflix-titelcontrole</h3>
+      <p id="netflixDiagHelp">Open eerst op Netflix de informatiepagina van één film of serie. Open daarna deze instellingen en vernieuw de controle hieronder.</p>
+      <button id="refreshNetflixDiag" class="ghost" type="button">Controle vernieuwen</button>
+      <pre id="lastNetflixDiag" style="white-space:pre-wrap;word-break:break-word;margin:12px 0 0;color:var(--mut);font:12px/1.5 Consolas,monospace">Nog geen Netflix-controle opgeslagen.</pre>
+    </div>
   </details>
   <p><span data-i18n="cacheHelp">Ratings incorrect or outdated?</span> <button class="linkbtn" id="clear" data-i18n="clearCache">Clear cache</button> <span data-i18n="refreshNetflix">and refresh Netflix.</span></p>
   <p class="hint" data-i18n="missingHint">Seeing “–” for a title? Some titles may not be found, especially when Netflix uses a localized title. The extension prefers showing no score over displaying a rating for the wrong movie or series.</p>
