@@ -297,6 +297,14 @@ function build(res, size, extra) {
   }
   return b;
 }
+function buildDebugBadge(res, size, extra) {
+  if (!S.debug) return null;
+  const debugResult = { ...(res || {}), rating: null, rt: null, metascore: null, verified: false };
+  const b = UI.makeBadge(debugResult, { ...S, size: size || S.size }, hooks);
+  b.classList.add("imdb-debug");
+  if (extra) b.classList.add(extra);
+  return b;
+}
 
 // Alleen een badge plaatsen wanneer een score echt aan een IMDb-ID is bevestigd.
 // Geen laad-balkjes of "geen score"-labels over de hele Netflix-pagina.
@@ -311,7 +319,7 @@ function render(host, id, extra) {
   lookup(id).then((res) => {
     if (host.dataset.imdbId !== id) return;
     host.querySelector(":scope > .imdb-badge")?.remove();
-    const badge = build(res, null, extra);
+    const badge = build(res, null, extra) || buildDebugBadge(res, null, extra);
     if (badge) host.appendChild(badge);
     else host.dataset.imdbNoRating = id;
   }).catch(() => {
@@ -436,8 +444,8 @@ async function updateMain() {
   let res = null;
   try { res = await lookup(id); } catch {}
   finally { if (pendingMain === id) pendingMain = null; }
-  if (!S.showMain || currentId() !== id || !isVerifiedRating(res)) return;
-  const badge = build(res, BIGGER[S.size] || "l");
+  if (!S.showMain || currentId() !== id) return;
+  const badge = build(res, BIGGER[S.size] || "l") || buildDebugBadge(res, BIGGER[S.size] || "l");
   if (!badge) return;
   badge.classList.add("imdb-main");
   badge.dataset.id = id;
