@@ -97,7 +97,10 @@ async function netflixInfo(id) {
     } finally { clearTimeout(timeout); }
   };
 
-  const [titleHtml, watchHtml] = await Promise.all([fetchPage("/title/"), fetchPage("/watch/")]);
+  const lang = String(document.documentElement.lang || "en").toLowerCase().split("-")[0];
+  const localizedTitleHtml = await fetchPage("/" + lang + "/title/");
+  const titleHtml = localizedTitleHtml || await fetchPage("/title/");
+  const watchHtml = titleHtml ? null : await fetchPage("/watch/");
   const pages = [titleHtml, watchHtml].filter(Boolean);
   if (!pages.length) {
     nfWhy.set(id, nfWhy.get(id) || "Netflix gaf geen metadata voor deze titel-ID");
@@ -144,6 +147,8 @@ async function netflixInfo(id) {
     // Paginametadata (Open Graph / title / h1) hoort daardoor bij precies die titel,
     // ook wanneer Netflix het JSON-LD-object geen expliciete URL meegeeft.
     const pageTitles = [
+      doc.querySelector('[data-uia="metadata"] h2')?.textContent,
+      doc.querySelector('[data-uia="video-title"]')?.textContent,
       doc.querySelector('meta[property="og:title"]')?.content,
       doc.querySelector('meta[name="title"]')?.content,
       doc.querySelector("h1")?.textContent,
@@ -195,7 +200,7 @@ const idCache = new Map();
 function infoFromId(id) {
   if (!idCache.has(id)) {
     idCache.set(id, (async () => {
-      const k = "n11:" + id;
+      const k = "n12:" + id;
       try {
         const st = (await chrome.storage.local.get([k]))[k];
         if (st && Date.now() - st.t < 30 * 864e5) return st.v;
@@ -390,27 +395,31 @@ const inView = (r) => r.right > -300 && r.left < innerWidth + 300 && r.bottom > 
 // soms staat de afbeelding als buur-element in dezelfde kaartcontainer.
 const POSTER_SELECTOR = 'img, video, [data-uia*="boxart"], [class*="boxart"], [style*="background-image"]';
 function cardHostForLink(a, id) {
-  let best = null;
-  let node = a;
-  for (let depth = 0; node && depth < 8; depth++, node = node.parentElement) {
-    // De rijcontainer is breder dan een kaart; daarboven nooit verder zoeken.
+  const hasOnlyThisTitle = (node) => {
+    const links = [...node.querySelectorAll('a[href*="/watch/"], a[href*="/title/"]')];
+    const ids = new Set(links.map((link) => idOf(link.getAttribute("href"))).filter(Boolean));
+    return ids.size === 1 && ids.has(id);
+  };
+
+  // Netflix' card root. This keeps artwork, title links and hover controls together.
+  const titleCard = a.closest(".title-card");
+  if (titleCard && titleCard.getBoundingClientRect().width <= 620 &&
+      titleCard.getBoundingClientRect().width >= 64 &&
+      titleCard.querySelector(POSTER_SELECTOR) && hasOnlyThisTitle(titleCard)) {
+    return titleCard;
+  }
+
+  // DOM variants without .title-card: use the nearest small container that holds
+  // both a poster and this one Netflix ID. Never climb up to an entire row.
+  for (let node = a.parentElement, depth = 0; node && depth < 6; node = node.parentElement, depth++) {
     const r = node.getBoundingClientRect();
     if (r.width > 620) break;
     if (r.width < 64 || r.height < r.width * 0.38 || r.height > r.width * 2.2 || !inView(r)) continue;
-    // Gebruik altijd een gewone container, nooit de titel-link zelf.
     if (node.tagName === "A") continue;
     const hasPoster = node.matches(POSTER_SELECTOR) || !!node.querySelector(POSTER_SELECTOR);
-    if (!hasPoster) continue;
-
-    const links = [...node.querySelectorAll('a[href*="/watch/"], a[href*="/title/"]')];
-    const ids = new Set(links.map((link) => idOf(link.getAttribute("href"))).filter(Boolean));
-    // Zodra de container meerdere titels bevat, zijn we buiten de individuele kaart.
-    if (ids.size > 1) break;
-    // Bewaar de grootste geldige individuele kaartcontainer, zodat poster- en
-    // titel-links van dezelfde kaart naar exact dezelfde host leiden.
-    if (ids.size === 1 && ids.has(id)) best = node;
+    if (hasPoster && hasOnlyThisTitle(node)) return node;
   }
-  return best;
+  return null;
 }
 
 function scanCards() {
