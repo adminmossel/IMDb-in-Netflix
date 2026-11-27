@@ -388,7 +388,7 @@ function scanHover() {
         const ids = new Set([...c.querySelectorAll('a[href*="/watch/"], a[href*="/title/"]')]
           .map((x) => idOf(x.getAttribute("href"))).filter(Boolean));
         if (ids.size > 1) break;
-        if (ids.size === 1) best = c;
+        if (ids.size === 1 && c.tagName !== "A") best = c;
       }
     }
     if (!best || best.querySelector(".imdb-main")) return;
