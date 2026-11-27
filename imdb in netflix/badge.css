@@ -1,4 +1,5 @@
-.title-card, .previewModal--info, .detail-modal, .about-wrapper, .title-info, .info-wrapper { position: relative; }
+/* Alleen kaartjes krijgen position: relative; Netflix' modals blijven ongemoeid. */
+.title-card { position: relative; }
 
 /* ---------- badge ---------- */
 .imdb-badge {
@@ -67,13 +68,13 @@ html.imdb-playback-hidden .imdb-badge { display: none !important; }
   display: block; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
 }
 
-/* badge op Netflix' hover-voorbeeldkaart */
-.imdb-badge.imdb-hover { top: 10px; left: 10px; }
-
-/* plaatsing op de grote titelpagina / modal */
-.imdb-badge.imdb-inline { position: static; margin-left: 12px; align-self: center; }
-.imdb-badge.imdb-float { position: fixed; top: 84px; left: 24px; }
-.imdb-badge.imdb-main-inline { position: relative; display: inline-flex; margin: 10px 0 0 8px; }
+/* badge in de knoppenrij van een modal (Play / + / duim / [IMDb]) */
+.imdb-badge.imdb-inline {
+  position: static; display: inline-flex; flex: none; align-self: center; vertical-align: middle;
+  margin: 0 0 0 12px; top: auto; left: auto; z-index: auto;
+}
+.imdb-badge.imdb-inline.imdb-mini { margin-left: 8px; }
+.imdb-badge.imdb-inline.imdb-text { margin-left: 10px; }
 
 /* ---------- infokaart ---------- */
 .imdb-card {

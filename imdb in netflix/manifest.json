@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "IMDb Rating voor Netflix",
-  "version": "0.6.10",
-  "description": "Toont IMDb-scores en optionele trailers op Netflix.",
+  "name": "IMDb Rating voor streamingdiensten",
+  "version": "0.8.0",
+  "description": "Toont IMDb-scores en optionele trailers op Netflix en andere streamingdiensten.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -29,6 +29,34 @@
       "js": [
         "badge.js",
         "content.js"
+      ],
+      "css": [
+        "badge.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://*.disneyplus.com/*",
+        "https://*.videoland.com/*",
+        "https://*.npo.nl/*",
+        "https://*.npostart.nl/*",
+        "https://www.primevideo.com/*",
+        "https://www.amazon.nl/gp/video/*",
+        "https://www.amazon.com/gp/video/*",
+        "https://www.amazon.de/gp/video/*",
+        "https://www.amazon.co.uk/gp/video/*",
+        "https://*.max.com/*",
+        "https://*.hbomax.com/*",
+        "https://tv.apple.com/*",
+        "https://*.skyshowtime.com/*",
+        "https://*.paramountplus.com/*",
+        "https://*.hulu.com/*"
+      ],
+      "js": [
+        "badge.js",
+        "sites.js",
+        "generic.js"
       ],
       "css": [
         "badge.css"

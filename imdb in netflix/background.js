@@ -2,11 +2,16 @@
 // eigen backend die de officiële IMDb API (AWS Data Exchange) gebruikt.
 const TTL = 7 * 24 * 60 * 60 * 1000;      // gevonden ratings: 7 dagen
 const NEG_TTL = 3 * 60 * 60 * 1000;      // "niet gevonden": 3 uur
-const PREFIX = "r12:"                     // nieuwe cache-versie (oude, foute resultaten vervallen)
+const PREFIX = "r13:";                    // nieuwe cache-versie (oude, foute resultaten vervallen)
 
 // ---------- titel-vergelijking: voorkomt dat een verkeerde film wordt getoond ----------
 const norm = (s) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
   .replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").trim();
+
+// "The Office" en "Office" zijn dezelfde titel; lidwoorden vooraan tellen niet mee.
+const ARTICLES = /^(the|a|an|de|het|een|le|la|les|el|los|las|der|die|das|il|lo) /;
+const tKey = (s) => norm(s).replace(ARTICLES, "");
+const sameTitle = (a, b) => !!tKey(a) && tKey(a) === tKey(b);
 
 function sim(a, b) {
   a = norm(a); b = norm(b);
@@ -19,33 +24,35 @@ function sim(a, b) {
   return i / (A.size + B.size - i);
 }
 
-function yearCompatible(candidateYear, requestedYear) {
-  const a = parseInt(String(candidateYear || "").match(/\d{4}/)?.[0], 10);
-  const b = parseInt(String(requestedYear || "").match(/\d{4}/)?.[0], 10);
-  // Netflix- en IMDb-jaartallen kunnen één jaar verschillen door release-/premièredatum.
-  // Een verschil van meer dan één jaar blijft een harde afwijzing.
-  return !a || !b || Math.abs(a - b) <= 1;
+// ---------- jaartallen ----------
+// Netflix toont bij een serie het jaar van het LAATSTE seizoen (Lupin deel 4 = 2026),
+// terwijl IMDb het startjaar geeft (2021). Daarom wordt voor series het hele
+// looptijdbereik vergeleken, niet alleen het startjaar.
+const year4 = (v) => parseInt(String(v || "").match(/\d{4}/)?.[0], 10) || null;
+function yearRange(v) {
+  const s = String(v || "").replace(/[\u2013\u2014]/g, "-");
+  const m = s.match(/(\d{4})(?:\s*-\s*(\d{4})?)?/);
+  if (!m) return null;
+  return { start: +m[1], end: m[2] ? +m[2] : null, ranged: /-/.test(s) };
+}
+function yearFits(range, requested, bucket, slack) {
+  const req = year4(requested);
+  if (!req || !range) return true;
+  if (bucket === "series") {
+    const end = range.ranged ? range.end : range.start;   // open einde = loopt nog
+    if (req < range.start - slack) return false;
+    if (end && req > end + slack) return false;
+    return true;
+  }
+  return Math.abs(req - range.start) <= slack;
 }
 
-function typeCompatible(candidateType, requestedType) {
-  if (!requestedType) return true;
-  const actual = String(candidateType || "").toLowerCase();
-  if (requestedType === "series") return actual === "series";
-  if (requestedType === "movie") return actual === "movie";
-  return true;
-}
-
-function suggestionMediaBucket(qid) {
-  if (/^(tvSeries|tvMiniSeries)$/i.test(qid || "")) return "series";
-  if (/^(movie|tvMovie|tvSpecial|tvShort|short)$/i.test(qid || "")) return "movie";
-  return null;
-}
-
-function suggestionTypeCompatible(qid, requestedType) {
-  if (!requestedType) return true;
-  if (requestedType === "series") return /^(tvSeries|tvMiniSeries)$/i.test(qid || "");
-  return /^(movie|tvMovie|tvSpecial|tvShort|short)$/i.test(qid || "");
-}
+// ---------- type (film / serie) ----------
+const bucketOfSuggestion = (qid) =>
+  /^(tvSeries|tvMiniSeries)$/i.test(qid || "") ? "series"
+  : /^(movie|tvMovie|tvSpecial|tvShort|short|video)$/i.test(qid || "") ? "movie" : null;
+const bucketOfRecord = (type) => type === "series" ? "series" : type === "movie" ? "movie" : null;
+const typeOk = (bucket, requested) => !!bucket && (!requested || bucket === requested);
 
 // ---------- OMDb ----------
 async function omdb(params, apiKey) {
@@ -82,8 +89,7 @@ function map(d) {
   };
 }
 
-// IMDb-suggesties kennen ook alternatieve (Engelse) titels van niet-Engelse producties,
-// bv. Netflix' "The Golden Hour" = de Nederlandse serie "Het Gouden Uur".
+// IMDb-suggesties: gratis, snel, en met looptijd (yr) en populariteit (rank).
 async function suggest(title, dbg) {
   const q = norm(title).replace(/ /g, "_");
   if (!q) return [];
@@ -97,9 +103,11 @@ async function suggest(title, dbg) {
     }
     const d = await r.json();
     return (d.d || [])
-      .filter((x) => x.id && x.id.startsWith("tt") &&
-        /^(movie|tvSeries|tvMiniSeries|tvMovie|tvSpecial|tvShort|video|short)$/.test(x.qid || ""))
-      .map((x) => ({ id: x.id, title: x.l, year: x.y || null, qid: x.qid || null }));
+      .filter((x) => x.id && /^tt\d+$/.test(x.id) && bucketOfSuggestion(x.qid))
+      .map((x) => ({
+        id: x.id, title: x.l, year: x.y || null, range: x.yr || x.y || null,
+        qid: x.qid, rank: Number.isFinite(+x.rank) ? +x.rank : 1e9
+      }));
   } catch (error) {
     if (dbg) dbg.steps.push("IMDb-suggesties fout: " + (error && error.message || "onbekend"));
     return [];
@@ -107,131 +115,131 @@ async function suggest(title, dbg) {
   finally { clearTimeout(timeout); }
 }
 
-async function fetchRating(title, key, year, mediaType) {
-  const yr = parseInt(String(year || "").match(/\d{4}/)?.[0], 10) || null;
+const fatal = (error) => ["bad-key", "limit"].includes(error && error.message);
+
+async function fetchRating(title, key, year, mediaType, strict) {
+  const yr = year4(year);
   const dbg = { q: title, y: yr, steps: [] };
   const done = (result) => ({ ...result, dbg });
-  const take = (result) => result && result.rating != null
-    ? { ...result, verified: true }
-    : null;
-  const exactTitle = (a, b) => !!norm(a) && norm(a) === norm(b);
-  const checkRecord = (record) => !!(
-    record &&
-    exactTitle(record.title, title) &&
-    typeCompatible(record.type, mediaType) &&
-    (!yr || (!!record.year && yearCompatible(record.year, yr)))
-  );
+  const take = (record) => record && record.rating != null ? { ...record, verified: true } : null;
+  const short = norm(title).split(" ").filter(Boolean).length < 2;
 
+  // Een OMDb-record is pas goed als type en jaar kloppen (jaar met ruimte `slack`).
+  const recordOk = (record, slack) => {
+    if (!record) return false;
+    const bucket = bucketOfRecord(record.type);
+    return typeOk(bucket, mediaType) && yearFits(yearRange(record.year), yr, bucket, slack);
+  };
   const byId = async (id) => {
     const data = await omdb({ i: id, plot: "short" }, key);
     dbg.steps.push("i=" + id + ":" + (data.Response === "True" ? data.imdbRating : data.Error));
     return data.Response === "True" ? map(data) : null;
   };
 
-  const [suggestions, direct] = await Promise.all([
-    suggest(title, dbg),
-    omdb({ t: title, ...(yr ? { y: yr } : {}), plot: "short" }, key)
-      .catch((error) => {
-        if (["bad-key", "limit"].includes(error && error.message)) throw error;
-        dbg.steps.push("t-fout:" + (error && error.message || "onbekend"));
-        return null;
-      })
-  ]);
-
-  dbg.steps.push("suggesties:" + suggestions.length);
-
-  // Korte titels zoals "Close", "Her" of "Up" zijn zonder jaar/type te ambigu.
-  if (!yr && !mediaType && norm(title).split(" ").filter(Boolean).length < 2) {
-    dbg.steps.push("ambigue korte titel zonder Netflix-jaar/type; match overgeslagen");
+  // Korte titels zoals "Close", "Her" of "Up" zijn zonder jaar én type te ambigu.
+  if (!yr && !mediaType && short) {
+    dbg.steps.push("ambigue korte titel zonder jaar/type; match overgeslagen");
     return done({ rating: null });
   }
 
-  // Alleen exacte titelsuggesties van een bekend film-/serietype zijn kandidaten.
-  // Geen substring- of woordoverlapmatches: die waren te riskant voor korte titels.
-  let eligible = suggestions
-    .filter((item) =>
-      item.id &&
-      /^tt\d+$/.test(item.id) &&
-      exactTitle(item.title, title) &&
-      !!suggestionMediaBucket(item.qid) &&
-      suggestionTypeCompatible(item.qid, mediaType) &&
-      (!yr || (!!item.year && yearCompatible(item.year, yr)))
-    );
+  // ---- route 1: IMDb-suggesties (geen OMDb-quota nodig voor het zoeken) ----
+  const suggestions = await suggest(title, dbg);
+  const typed = suggestions.filter((s) => typeOk(bucketOfSuggestion(s.qid), mediaType));
+  dbg.steps.push("suggesties:" + suggestions.length + " (type ok:" + typed.length + ")");
 
-  dbg.steps.push("exacte IMDb-kandidaten:" + eligible.length);
-  if (!eligible.length && suggestions.length) {
-    dbg.steps.push("beschikbare suggesties: " + suggestions.slice(0, 5)
-      .map(item => item.title + " [" + (item.year || "?") + ", " + (item.qid || "?") + "]")
-      .join(" | "));
+  const fits = (s, slack) => yearFits(yearRange(s.range), yr, bucketOfSuggestion(s.qid), slack);
+  const uniq = (list) => [...new Map(list.map((s) => [s.id, s])).values()];
+  const exact = typed.filter((s) => sameTitle(s.title, title));
+
+  // Eerst het strengste jaar, daarna geleidelijk ruimer.
+  let pool = [], slackUsed = 0;
+  for (const slack of [0, 1, 3]) {
+    pool = uniq(exact.filter((s) => fits(s, slack)));
+    if (pool.length) { slackUsed = slack; break; }
   }
-
-  // Bij een bekend jaar krijgt een exact jaartal voorrang op de marge van één jaar.
-  if (yr) {
-    const exactYear = eligible.filter(item => Number(item.year) === yr);
-    if (exactYear.length) eligible = exactYear;
+  // Bijna-gelijke titel ("Lupin: Part 4") alleen met exact jaar.
+  if (!pool.length && yr) {
+    pool = uniq(typed.filter((s) => sim(s.title, title) >= 0.85 && fits(s, 0)));
+    slackUsed = 0;
+    if (pool.length) dbg.steps.push("titel ongeveer gelijk; jaar exact");
   }
-  const unique = [...new Map(eligible.map(item => [item.id, item])).values()];
+  dbg.steps.push("kandidaten:" + pool.map((s) => s.id + "[" + s.title + "," + (s.range || "?") + "]").join(",") + " slack=" + slackUsed);
 
-  // Een unieke IMDb-suggestie is de veiligste route: haal die ID rechtstreeks op bij OMDb.
-  if (unique.length === 1) {
+  if (pool.length) {
+    pool.sort((a, b) => a.rank - b.rank);
+    // Meerdere gelijknamige producties: zonder jaar niet gokken, met jaar de bekendste.
+    // strict (kaartjes zonder jaar): bij meerdere gelijknamige titels nooit gokken.
+    if (pool.length > 1 && !yr && (strict || pool[1].rank < pool[0].rank * 3)) {
+      dbg.steps.push("ambigue IMDb-suggesties zonder jaar:" + pool.map((s) => s.id).join(","));
+      return done({ rating: null });
+    }
     try {
-      const record = await byId(unique[0].id);
-      if (checkRecord(record)) {
+      const record = await byId(pool[0].id);
+      if (recordOk(record, Math.max(slackUsed, 1))) {
+        const result = take(record);
+        if (result) return done(result);
+        dbg.steps.push("match gevonden maar nog geen IMDb-score");
+        return done({ rating: null, id: record.id });
+      }
+      dbg.steps.push("suggestie verworpen: type/jaar wijkt af");
+    } catch (error) {
+      if (fatal(error)) throw error;
+      dbg.steps.push("i-fout:" + pool[0].id);
+    }
+  }
+
+  // Zonder jaar en in strict-modus zijn de OMDb-titelroutes te gokkerig.
+  if (strict && !yr) {
+    dbg.steps.push("strict: geen jaar, geen unieke suggestie; OMDb-titelroutes overgeslagen");
+    return done({ rating: null });
+  }
+
+  // ---- route 2: directe OMDb-titelzoekactie ----
+  try {
+    const params = { t: title, plot: "short" };
+    if (mediaType) params.type = mediaType;
+    const direct = await omdb(params, key);
+    if (direct.Response === "True") {
+      const record = map(direct);
+      dbg.steps.push("t:" + direct.Title + "(" + direct.imdbRating + ")");
+      if (sameTitle(record.title, title) && recordOk(record, 1)) {
         const result = take(record);
         if (result) return done(result);
       }
-      dbg.steps.push("unieke suggestie verworpen: titel/jaar/type wijkt af");
-    } catch (error) {
-      if (["bad-key", "limit"].includes(error && error.message)) throw error;
-      dbg.steps.push("i-fout:" + unique[0].id);
     }
-  } else if (unique.length > 1) {
-    dbg.steps.push("ambigue IMDb-suggesties:" + unique.map(item => item.id).join(","));
-    return done({ rating: null });
+  } catch (error) {
+    if (fatal(error)) throw error;
+    dbg.steps.push("t-fout:" + (error && error.message || "onbekend"));
   }
 
-  // De directe OMDb-titelzoekactie mag alleen als Netflix zowel jaar als type kent.
-  // Anders kan OMDb bij gelijknamige titels stilzwijgend de verkeerde productie kiezen.
-  if (yr && mediaType && direct && direct.Response === "True") {
-    const record = map(direct);
-    dbg.steps.push("t:" + direct.Title + "(" + direct.imdbRating + ")");
-    if (checkRecord(record)) {
-      const result = take(record);
-      if (result) return done(result);
-    }
-  } else if (direct) {
-    dbg.steps.push("directe titelmatch niet gebruikt: onvoldoende Netflix-context");
-  }
-
-  // OMDb-search is uitsluitend een laatste vangnet wanneer jaar én type bekend zijn.
-  if (yr && mediaType) {
+  // ---- route 3: OMDb-search als laatste vangnet ----
+  if (yr || mediaType) {
     try {
-      const search = await omdb({ s: title }, key);
+      const params = { s: title };
+      if (mediaType) params.type = mediaType;
+      const search = await omdb(params, key);
       dbg.steps.push("s:" + (search.Response === "True" ? (search.Search || []).length : search.Error));
       if (search.Response === "True" && Array.isArray(search.Search)) {
-        let matches = search.Search.filter(item =>
-          item.imdbID &&
-          exactTitle(item.Title, title) &&
-          item.Type !== "game" &&
-          item.Type !== "episode" &&
-          typeCompatible(item.Type, mediaType) &&
-          (!yr || (!!item.Year && yearCompatible(item.Year, yr)))
-        );
-        const exactYear = matches.filter(item => Number(item.Year) === yr);
-        if (exactYear.length) matches = exactYear;
-        const ids = [...new Map(matches.map(item => [item.imdbID, item])).values()];
-        if (ids.length === 1) {
-          const record = await byId(ids[0].imdbID);
-          if (checkRecord(record)) {
-            const result = take(record);
-            if (result) return done(result);
-          }
-        } else if (ids.length > 1) {
-          dbg.steps.push("ambigue OMDb-zoekresultaten:" + ids.map(item => item.imdbID).join(","));
+        let matches = search.Search.filter((item) => {
+          const bucket = bucketOfRecord(item.Type);
+          return item.imdbID && sameTitle(item.Title, title) && typeOk(bucket, mediaType) &&
+            yearFits(yearRange(item.Year), yr, bucket, 1);
+        });
+        matches = uniq(matches.map((m) => ({ id: m.imdbID, ...m })));
+        if (matches.length === 1 || (matches.length > 1 && yr)) {
+          const exactYear = matches.filter((m) => year4(m.Year) === yr);
+          const choice = (exactYear.length === 1 ? exactYear : matches)[0];
+          if (matches.length === 1 || exactYear.length === 1) {
+            const record = await byId(choice.imdbID);
+            if (recordOk(record, 1)) {
+              const result = take(record);
+              if (result) return done(result);
+            }
+          } else dbg.steps.push("ambigue OMDb-zoekresultaten:" + matches.map((m) => m.id).join(","));
         }
       }
     } catch (error) {
-      if (["bad-key", "limit"].includes(error && error.message)) throw error;
+      if (fatal(error)) throw error;
       dbg.steps.push("s-fout:" + (error && error.message || "onbekend"));
     }
   }
@@ -287,8 +295,8 @@ function pump() {
 }
 const inflight = new Map();
 
-async function getRating(title, year, nocache, mediaType) {
-  const key = PREFIX + norm(title) + (year ? ":" + year : "") + ":" + (mediaType || "any");
+async function getRating(title, year, nocache, mediaType, strict) {
+  const key = PREFIX + norm(title) + (year ? ":" + year : "") + ":" + (mediaType || "any") + (strict ? ":s" : "");
   const hit = (await chrome.storage.local.get([key]))[key];
   if (!nocache && hit && Date.now() - hit.t < (hit.v.rating == null ? NEG_TTL : TTL)) return hit.v;
 
@@ -296,7 +304,7 @@ async function getRating(title, year, nocache, mediaType) {
   if (!apiKey) return { error: "no-key" };
 
   if (!inflight.has(key)) {
-    inflight.set(key, limit(() => fetchRating(title, apiKey, year, mediaType)).finally(() => inflight.delete(key)));
+    inflight.set(key, limit(() => fetchRating(title, apiKey, year, mediaType, strict)).finally(() => inflight.delete(key)));
   }
   const v = await inflight.get(key);
   await chrome.storage.local.set({ [key]: { t: Date.now(), v } });   // fouten worden NIET gecachet
@@ -305,7 +313,7 @@ async function getRating(title, year, nocache, mediaType) {
 
 chrome.runtime.onMessage.addListener((msg, _s, send) => {
   if (msg.type === "rating") {
-    getRating(msg.title, msg.year, msg.nocache, msg.mediaType).then(send).catch((e) =>
+    getRating(msg.title, msg.year, msg.nocache, msg.mediaType, msg.strict).then(send).catch((e) =>
       send({ error: ["bad-key", "limit"].includes(e && e.message) ? e.message : "fetch" }));
     return true;
   }

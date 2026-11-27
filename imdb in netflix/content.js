@@ -3,6 +3,7 @@ const DEF = { showMeta: true, showRT: true, showVotes: false, showCard: true, sh
 let S = { ...DEF };
 const hooks = { onOptions: () => chrome.runtime.sendMessage({ type: "options" }).catch(() => {}) };
 
+
 // ---------- instellingen ----------
 chrome.storage.sync.get(Object.keys(DEF)).then((d) => { S = { ...DEF, ...d }; resetAll(); });
 chrome.storage.onChanged.addListener((c, area) => {
@@ -14,17 +15,16 @@ chrome.storage.onChanged.addListener((c, area) => {
 function resetAll() {
   hideCard();
   document.querySelectorAll(".imdb-badge").forEach((b) => b.remove());
-  document.querySelectorAll("[data-imdb-id], [data-imdb-fail], [data-imdb-pending], [data-imdb-no-rating], [data-imdb-hover]").forEach((e) => {
-    delete e.dataset.imdbId;
-    delete e.dataset.imdbFail;
+  document.querySelectorAll("[data-imdb-key], [data-imdb-host], [data-imdb-pending], [data-imdb-no]").forEach((e) => {
+    delete e.dataset.imdbKey;
+    delete e.dataset.imdbHost;
     delete e.dataset.imdbPending;
-    delete e.dataset.imdbNoRating;
-    delete e.dataset.imdbHover;
+    delete e.dataset.imdbNo;
     e.classList.remove("imdb-host-mini");
   });
-  resById.clear();
+  resCache.clear();
+  resPending.clear();
   idCache.clear();
-  pendingById.clear();
   scan();
 }
 
@@ -55,13 +55,14 @@ function ask(title, year, mediaType) {
 // ---------- Netflix-id -> titel + jaar ----------
 // De link levert alleen de Netflix-ID. De titel zelf komt uitsluitend uit metadata
 // van de bijbehorende Netflix-titelpagina; knoplabels en willekeurige DOM-tekst zijn geen titelbron.
-const GENERIC = /^(netflix|home|browse|play|afspelen|speel af|more info|meer info|info|my list|mijn lijst|series|films|movies|tv shows|zoeken|search|new & popular|nieuw en populair)$/i;
+const GENERIC = /^(netflix|home|browse|play|afspelen|speel af|more info|meer info|info|my list|mijn lijst|series|films|movies|tv shows|zoeken|search|new & popular|nieuw en populair|more like this|meer zoals dit|episodes|afleveringen|trailers|modal|dialog|venster|top 10)$/i;
 function cleanTitle(t) {
-  t = (t || "").split("|")[0]
+  t = (t || "").replace(/[\u2066-\u2069\u200e\u200f]/g, "").split("|")[0]
     .replace(/\s+[-–—]\s*Netflix.*$/i, "")
-    .replace(/^(Watch|Kijk naar|Kijk|Bekijk)\s+/i, "")
+    .replace(/^(Watch|Kijk naar|Kijk|Bekijk|About|Over)\s+/i, "")
+    .replace(/\s+/g, " ")
     .trim();
-  return !t || GENERIC.test(t) ? null : t;
+  return !t || t.length > 120 || GENERIC.test(t) ? null : t;
 }
 const idOf = (href) => ((href || "").match(/\/(?:watch|title)\/(\d{5,})/) || [])[1] || null;
 
@@ -78,12 +79,14 @@ const nfWhy = new Map();
 const nfTrace = new Map();
 async function netflixInfo(id) {
   nfTrace.set(id, []);
+  let resolvedId = id;   // wordt het serie-ID als Netflix een aflevering doorstuurt
   const trace = (message) => {
     const items = nfTrace.get(id) || [];
     if (items.length < 12) items.push("netflix-fetch: " + message);
     nfTrace.set(id, items);
   };
   const fetchPage = async (path) => {
+    resolvedId = id;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
     try {
@@ -96,9 +99,18 @@ async function netflixInfo(id) {
       }
       const finalId = idOf(response.url);
       if (finalId !== id) {
-        trace(path + " redirect naar " + finalUrl.pathname + "; verwacht ID " + id);
-        nfWhy.set(id, path + " werd omgeleid naar een andere URL: " + finalUrl.pathname);
-        return null;
+        // Een aflevering-ID (bv. van de "Next Episode"-knop) wordt door Netflix naar de
+        // bovenliggende serie omgeleid: /title/<aflevering> -> /title/<serie>. Dat is
+        // juist de titel die we zoeken, dus accepteren we het (alleen via /title/).
+        const isShowRedirect = path === "/title/" && !!finalId &&
+          /^\/(?:[a-z]{2}(?:-[A-Za-z]{2})?\/)?title\/\d{5,}\/?$/i.test(finalUrl.pathname);
+        if (!isShowRedirect) {
+          trace(path + " redirect naar " + finalUrl.pathname + "; verwacht ID " + id);
+          nfWhy.set(id, path + " werd omgeleid naar een andere URL: " + finalUrl.pathname);
+          return null;
+        }
+        resolvedId = finalId;
+        trace(path + " aflevering " + id + " -> serie " + finalId);
       }
       const html = await response.text();
       const scriptCount = (html.match(/<script\b/gi) || []).length;
@@ -123,8 +135,8 @@ async function netflixInfo(id) {
 
   const refersToId = (value) => {
     if (typeof value !== "string") return false;
-    if (value === id) return true;
-    return new RegExp("/(?:title|watch)/" + id + "(?:[/?#]|$)").test(value);
+    if (value === resolvedId) return true;
+    return new RegExp("/(?:title|watch)/" + resolvedId + "(?:[/?#]|$)").test(value);
   };
 
   // Netflix embeds the canonical title payload in netflix.reactContext.
@@ -171,7 +183,7 @@ async function netflixInfo(id) {
           const meta = node.metaData && typeof node.metaData === "object" ? node.metaData : {};
           const rawId = node.videoId ?? node.topLevelVideoId ?? meta.videoId ?? meta.topLevelVideoId;
           const rawTitle = cleanTitle(node.title || node.copy?.title || node.copy?.name);
-          if (String(rawId ?? "") === id && rawTitle) {
+          if (String(rawId ?? "") === resolvedId && rawTitle) {
             const rawType = String(node.__typename || node.type || meta.type || "").toLowerCase();
             const mediaType = rawType === "movie" ? "movie"
               : rawType === "show" || rawType === "tvseries" || rawType === "tvminiseries" ? "series" : null;
@@ -306,7 +318,7 @@ const idCache = new Map();
 function infoFromId(id) {
   if (!idCache.has(id)) {
     idCache.set(id, (async () => {
-      const k = "n14:" + id;
+      const k = "n15:" + id;
       try {
         const st = (await chrome.storage.local.get([k]))[k];
         if (st && Date.now() - st.t < 30 * 864e5) return st.v;
@@ -320,54 +332,71 @@ function infoFromId(id) {
   return idCache.get(id);
 }
 
-const resById = new Map();
-const pendingById = new Map();
 
-async function lookup(id) {
-  if (resById.has(id)) return resById.get(id);
-  if (pendingById.has(id)) return pendingById.get(id);
-  const p = lookup1(id).then((result) => {
-    if (!result || !["fetch", "ctx"].includes(result.error)) resById.set(id, result);
+// ---------- zoekopdracht: titel(s) + jaar + type -> bevestigde IMDb-score ----------
+// req = { key, id?, titles[], fallbackTitles[], year?, mediaType? }
+const resCache = new Map();
+const resPending = new Map();
+
+async function lookup(req) {
+  if (resCache.has(req.key)) return resCache.get(req.key);
+  if (resPending.has(req.key)) return resPending.get(req.key);
+  const p = lookup1(req).then((result) => {
+    if (!result || !["fetch", "ctx"].includes(result.error)) resCache.set(req.key, result);
     return result;
-  }).finally(() => pendingById.delete(id));
-  pendingById.set(id, p);
+  }).finally(() => resPending.delete(req.key));
+  resPending.set(req.key, p);
   return p;
 }
 
-async function lookup1(id) {
-  const info = await infoFromId(id);
-  if (!info || !info.title) {
-    return { rating: null, dbg: { q: "(geen betrouwbare Netflix-titel)", y: null,
-      steps: ["id " + id, "netflix: " + (nfWhy.get(id) || "geen titelmetadata"), ...(nfTrace.get(id) || [])] } };
+async function lookup1(req) {
+  const steps = [];
+  let titles = [...(req.titles || [])];
+  let year = req.year || null;
+  let mediaType = req.mediaType || null;
+  let aliases = [];
+  const id = req.id || null;
+
+  // Netflix-pagina alleen erbij pakken als de pagina zelf te weinig vertelt.
+  if (id && (!titles.length || !year)) {
+    const info = await infoFromId(id);
+    if (info) {
+      if (info.title) titles.push(info.title);
+      aliases = info.aliases || [];
+      year = year || info.year || null;
+      mediaType = mediaType || info.mediaType || null;
+    } else {
+      steps.push("netflix: " + (nfWhy.get(id) || "geen titelmetadata"), ...(nfTrace.get(id) || []));
+    }
+  }
+  if (!titles.length) titles = [...(req.fallbackTitles || [])];
+
+  const candidates = [...titles, ...aliases]
+    .map(cleanTitle)
+    .filter((title, index, all) => title && all.findIndex((x) => x.toLowerCase() === title.toLowerCase()) === index);
+
+  if (!candidates.length) {
+    return { rating: null, dbg: { q: "(geen betrouwbare titel)", y: year, steps: ["id " + (id || "?"), ...steps] } };
   }
 
-  const candidates = [info.title, ...(info.aliases || [])]
-    .map(cleanTitle)
-    .filter((title, index, all) => title && all.findIndex(x => x.toLowerCase() === title.toLowerCase()) === index);
-
-  const failedCandidates = [];
+  const failed = [];
   for (const title of candidates) {
-    const result = await ask(title, info.year, info.mediaType);
+    const result = await ask(title, year, mediaType);
     if (result.error) return result;
     const rating = Number(result.rating);
     if (result.verified === true && Number.isFinite(rating) && rating >= 0 && rating <= 10 && /^tt\d{5,}$/.test(result.id || "")) {
       return result;
     }
+    failed.push("kandidaat: " + title);
     const detail = result && result.dbg;
-    failedCandidates.push("kandidaat: " + title);
-    if (detail && Array.isArray(detail.steps)) failedCandidates.push(...detail.steps);
-    else failedCandidates.push("geen score of bevestigde IMDb-ID ontvangen");
+    if (detail && Array.isArray(detail.steps)) failed.push(...detail.steps);
+    else failed.push("geen score of bevestigde IMDb-ID ontvangen");
   }
   return {
     rating: null,
     dbg: {
-      q: info.title,
-      y: info.year,
-      steps: [
-        "Netflix-ID: " + id,
-        "type: " + (info.mediaType || "onbekend"),
-        ...failedCandidates
-      ]
+      q: candidates[0], y: year,
+      steps: ["Netflix-ID: " + (id || "?"), "type: " + (mediaType || "onbekend"), "jaar: " + (year || "onbekend"), ...steps, ...failed]
     }
   };
 }
@@ -468,38 +497,251 @@ function buildDebugBadge(res, size, extra) {
 
 // Alleen een badge plaatsen wanneer een score echt aan een IMDb-ID is bevestigd.
 // Geen laad-balkjes of "geen score"-labels over de hele Netflix-pagina.
-function render(host, id, extra) {
-  if (!host || !id) return;
-  if (host.dataset.imdbId === id && (
-    host.querySelector(":scope > .imdb-badge") ||
-    host.dataset.imdbPending === id ||
-    host.dataset.imdbNoRating === id
-  )) return;
 
-  host.querySelector(":scope > .imdb-badge")?.remove();
-  host.dataset.imdbId = id;
-  host.dataset.imdbPending = id;
-  delete host.dataset.imdbNoRating;
-  if (getComputedStyle(host).position === "static") host.style.position = "relative";
-
-  lookup(id).then((res) => {
-    if (host.dataset.imdbId !== id || host.dataset.imdbPending !== id) return;
-    delete host.dataset.imdbPending;
-    saveNetflixDiagnostic(id, res);
-    host.querySelector(":scope > .imdb-badge")?.remove();
-    const badge = build(res, null, extra) || buildDebugBadge(res, null, extra);
-    if (badge) host.appendChild(badge);
-    else host.dataset.imdbNoRating = id;
-  }).catch(() => {
-    if (host.dataset.imdbId === id && host.dataset.imdbPending === id) {
-      delete host.dataset.imdbPending;
-      host.querySelector(":scope > .imdb-badge")?.remove();
-      host.dataset.imdbNoRating = id;
-    }
-  });
-}
+// =====================================================================
+//  DOM-herkenning
+//  Eén badge per plek: óf in de knoppenrij van een modal (Play / + / duim),
+//  óf linksboven op een kaartje in een rij. Nooit allebei op dezelfde titel.
+// =====================================================================
+const MODAL_SEL = '.previewModal--wrapper, .previewModal--container, .detail-modal, .mini-modal, [role="dialog"]';
+const CARD_SEL = '.title-card, .titleCard--container, [class*="titleCard"], .moreLikeThis, [class*="moreLikeThis"]';
+const EPISODE_SEL = '.episodeSelector, [class*="episodeSelector"], [class*="episode-"], [data-uia*="episode-"]';
+const EXCL_SEL = CARD_SEL + ", " + EPISODE_SEL + ', [class*="trailers"]';
+const PLAY_RE = /^(play|afspelen|speel af|resume|hervat|doorgaan|continue|next episode|volgende aflevering|watch now|nu kijken)/i;
+const END_CONTROLS = '[data-uia*="mute"], [data-uia*="volume"], [data-uia*="expand"], [data-uia*="detail"], [aria-label*="mute" i], [aria-label*="geluid" i], [aria-label*="volume" i]';
 
 const inView = (r) => r.right > -300 && r.left < innerWidth + 300 && r.bottom > -300 && r.top < innerHeight + 300;
+const clean = (t) => (t || "").replace(/[\u2066-\u2069\u200e\u200f]/g, "").replace(/\s+/g, " ").trim();
+
+function currentId() {
+  const match = location.pathname.match(/^\/(?:[a-z]{2}(?:-[A-Za-z]{2})?\/)?title\/(\d{5,})(?:\/|$)/i);
+  return match ? match[1] : null;
+}
+function jbvId() {
+  const v = new URLSearchParams(location.search).get("jbv");
+  return v && /^\d{5,}$/.test(v) ? v : null;
+}
+
+// Buitenste modal-element waar dit element in zit (of null).
+function modalRoot(el) {
+  let m = el.closest(MODAL_SEL);
+  if (!m) return null;
+  let up;
+  while ((up = m.parentElement && m.parentElement.closest(MODAL_SEL))) m = up;
+  return m;
+}
+const isMini = (root) => !!(root.matches(".mini-modal") || root.closest(".mini-modal") || root.querySelector(":scope > .mini-modal"));
+// Elementen in een uitgesloten blok (More Like This, afleveringenlijst, trailers) binnen de modal.
+function excluded(el, root) {
+  const x = el.closest(EXCL_SEL);
+  return !!x && x !== root && root.contains(x);
+}
+
+function findPlay(scope) {
+  const nodes = scope.querySelectorAll('[data-uia="play-button"], button, a[href*="/watch/"]');
+  for (const el of nodes) {
+    if (!el.offsetParent || el.closest(".imdb-badge")) continue;
+    if (excluded(el, scope)) continue;
+    const label = clean(el.getAttribute("aria-label") || el.textContent);
+    const uia = el.getAttribute("data-uia") || "";
+    if (/play-button/.test(uia) || (label.length < 40 && PLAY_RE.test(label))) return el;
+  }
+  return null;
+}
+
+// Titelkandidaten uit wat de modal zelf toont (logo-alt, "Over <titel>", aria-label).
+function domTitles(root) {
+  const out = [];
+  const add = (v) => { const t = cleanTitle(v); if (t && !out.some((x) => x.toLowerCase() === t.toLowerCase())) out.push(t); };
+  root.querySelectorAll('.about-header strong, .about-wrapper strong, [data-uia*="about"] strong').forEach((e) => {
+    if (!excluded(e, root)) add(e.textContent);
+  });
+  root.querySelectorAll("img[alt]").forEach((img) => {
+    if (excluded(img, root)) return;
+    const sig = (img.className || "") + " " + (img.getAttribute("data-uia") || "") + " " + (img.parentElement ? img.parentElement.className || "" : "");
+    if (/titleTreatment|title-treatment|video-title|logo/i.test(sig)) add(img.getAttribute("alt"));
+  });
+  root.querySelectorAll('[data-uia="video-title"], [data-uia*="title-treatment"], h1').forEach((e) => {
+    if (excluded(e, root)) return;
+    const img = e.querySelector("img[alt]");
+    add(e.getAttribute("aria-label") || (img && img.getAttribute("alt")) || e.textContent);
+  });
+  add(root.getAttribute("aria-label"));
+  if (!out.length) {
+    for (const img of root.querySelectorAll("img[alt]")) {
+      if (!excluded(img, root) && clean(img.getAttribute("alt"))) { add(img.getAttribute("alt")); if (out.length) break; }
+    }
+  }
+  return out;
+}
+
+// Jaar en type (film/serie) uit de metadata-regel: "2026  4 Parts" of "2026  2h 8m".
+function domMeta(root) {
+  let year = null, line = "";
+  for (const e of root.querySelectorAll("span, div, li, p")) {
+    if (e.childElementCount > 0) continue;
+    const t = clean(e.textContent);
+    if (!/^(19|20)\d{2}$/.test(t) || excluded(e, root)) continue;
+    year = +t;
+    const bits = [t];
+    for (let s = e.nextElementSibling, i = 0; s && i < 3; s = s.nextElementSibling, i++) bits.push(clean(s.textContent));
+    line = bits.join(" ").slice(0, 100);
+    break;
+  }
+  let mediaType = null;
+  if (/\b(seasons?|seizoenen|seizoen|parts?|delen|deel|episodes?|afleveringen|limited series|miniserie|miniseries)\b/i.test(line)) mediaType = "series";
+  else if (/\b\d+\s?(h|u|uur|hr)\b|\b\d+\s?(min|m)\b/i.test(line)) mediaType = "movie";
+  if (!mediaType) {
+    for (const e of root.querySelectorAll("span, div, li, p")) {
+      if (e.childElementCount > 0) continue;
+      const t = clean(e.textContent);
+      if (!t || t.length > 25 || excluded(e, root)) continue;
+      if (/^(films?|movies?)$/i.test(t) || /^\d+\s?(h|u|uur)(\s?\d+\s?(m|min))?$/i.test(t) || /^\d+\s?min$/i.test(t)) { mediaType = "movie"; break; }
+      if (/^(serie|series|show|tv series|tv-serie)$/i.test(t) || /^\d+\s?(seasons?|seizoenen|seizoen|parts?|delen)$/i.test(t) || /^limited series$/i.test(t)) { mediaType = "series"; break; }
+    }
+  }
+  if (!mediaType) {
+    const tx = root.textContent || "";
+    const hint = tx.match(/\b(This|Deze)\s+(series|show|film|movie|serie|programma)\b/i);
+    if (hint) mediaType = /film|movie/i.test(hint[2]) ? "movie" : "series";
+    else {
+      const gi = tx.search(/Genres?:/i);
+      const g = gi >= 0 ? tx.slice(gi, gi + 160) : "";
+      const s = /(series|serie|shows?|programma)/i.test(g), f = /(films?|movies?)/i.test(g);
+      if (s && !f) mediaType = "series"; else if (f && !s) mediaType = "movie";
+    }
+  }
+  return { year, mediaType };
+}
+
+function modalIds(root) {
+  const ids = new Set();
+  let playId = null;
+  root.querySelectorAll('a[href*="/watch/"], a[href*="/title/"]').forEach((a) => {
+    if (excluded(a, root)) return;
+    const id = idOf(a.getAttribute("href"));
+    if (id) ids.add(id);
+  });
+  return ids;
+}
+
+function modalInfo(root, play) {
+  const mini = isMini(root);
+  let id = null;
+  if (!mini) id = currentId() || jbvId();
+  if (!id) {
+    const link = play && (play.matches("a[href]") ? play : play.closest("a[href]") || play.querySelector("a[href]"));
+    const playId = link ? idOf(link.getAttribute("href")) : null;
+    const ids = modalIds(root);
+    id = ids.size === 1 ? [...ids][0] : (playId && ids.has(playId) ? playId : null);
+  }
+  const meta = domMeta(root);
+  return { id, titles: domTitles(root), year: meta.year, mediaType: meta.mediaType };
+}
+
+// ---------- badge in de knoppenrij van een modal ----------
+function insertInRow(play, badge) {
+  const row = play.parentElement;
+  if (!row) return false;
+  const kids = [...row.children].filter((k) => !k.classList.contains("imdb-badge"));
+  const isEnd = (k) => k.matches(END_CONTROLS) || !!k.querySelector(END_CONTROLS);
+  let anchor = null;
+  kids.forEach((k) => { if (!isEnd(k)) anchor = k; });
+  if (anchor) anchor.insertAdjacentElement("afterend", badge); else row.appendChild(badge);
+  return true;
+}
+
+function removeBadges(scope, surface) {
+  scope.querySelectorAll('.imdb-badge[data-surface="' + surface + '"]').forEach((b) => b.remove());
+}
+
+function mountModal(root, key, res, mini) {
+  const play = findPlay(root);
+  if (!play) return false;
+  removeBadges(root, "modal");
+  const size = mini ? "s" : (BIGGER[S.size] || "l");
+  const badge = build(res, size, "imdb-inline") || buildDebugBadge(res, size, "imdb-inline");
+  if (!badge) { root.dataset.imdbNo = key; return true; }
+  badge.dataset.surface = "modal";
+  badge.dataset.key = key;
+  if (mini) badge.classList.add("imdb-mini");
+  if (!insertInRow(play, badge)) { badge.remove(); return false; }
+  delete root.dataset.imdbNo;
+  return true;
+}
+
+const BIGGER = { s: "m", m: "l", l: "xl" };
+function loadingBadge(size, extra) {
+  const b = UI.makeBadge({ loading: true }, { ...S, size: size || S.size }, hooks);
+  if (extra) b.classList.add(extra);
+  return b;
+}
+
+function updateModals() {
+  const roots = new Set();
+  document.querySelectorAll(MODAL_SEL).forEach((m) => {
+    const r = modalRoot(m);
+    if (r && r.getClientRects().length) roots.add(r);
+  });
+  // Oudere titelpagina zonder modal
+  if (!roots.size && currentId()) {
+    const page = document.querySelector("main") || document.body;
+    if (findPlay(page)) roots.add(page);
+  }
+
+  const live = new Set();
+  roots.forEach((root) => {
+    const play = findPlay(root);
+    if (!play) return;
+    const mini = isMini(root);
+    if (mini ? !S.showHover : !S.showMain) { removeBadges(root, "modal"); return; }
+    const info = modalInfo(root, play);
+    if (!info.id && !info.titles.length) return;
+    live.add(root);
+
+    const key = ["m", info.id || "", info.titles[0] || "", info.year || "", info.mediaType || ""].join("|");
+    if (root.dataset.imdbKey !== key) {
+      removeBadges(root, "modal");
+      root.dataset.imdbKey = key;
+      delete root.dataset.imdbPending;
+      delete root.dataset.imdbNo;
+    }
+    const badges = [...root.querySelectorAll('.imdb-badge[data-surface="modal"]')];
+    if (badges.length > 1) badges.slice(1).forEach((b) => b.remove());       // nooit dubbel
+    if (badges.length && badges[0].dataset.key === key && badges[0].isConnected) return;
+    if (root.dataset.imdbNo === key || root.dataset.imdbPending === key) return;
+
+    if (resCache.has(key)) { mountModal(root, key, resCache.get(key), mini); return; }
+    // Pas zoeken als de gegevens van de modal even stabiel zijn (spaart aanvragen bij snel hoveren).
+    if (root.__imdbSeenKey !== key) { root.__imdbSeenKey = key; root.__imdbSeenAt = Date.now(); }
+    if (Date.now() - root.__imdbSeenAt < 500) { setTimeout(queueScan, 550); return; }
+    root.dataset.imdbPending = key;
+    const loadPlay = findPlay(root);
+    if (loadPlay) {
+      removeBadges(root, "modal");
+      const lb = loadingBadge(mini ? "s" : (BIGGER[S.size] || "l"), "imdb-inline");
+      lb.dataset.surface = "modal"; lb.dataset.key = key;
+      if (mini) lb.classList.add("imdb-mini");
+      insertInRow(loadPlay, lb);
+    }
+    lookup({ key, id: info.id, titles: info.titles, year: info.year, mediaType: info.mediaType }).then((res) => {
+      if (root.dataset.imdbPending === key) delete root.dataset.imdbPending;
+      if (!root.isConnected || root.dataset.imdbKey !== key) return;
+      saveNetflixDiagnostic(info.id || key, res);
+      mountModal(root, key, res, mini);
+    }).catch(() => {
+      if (root.dataset.imdbPending === key) delete root.dataset.imdbPending;
+      removeBadges(root, "modal");
+      root.dataset.imdbNo = key;
+    });
+  });
+
+  // Losse modal-badges zonder (zichtbare) modal opruimen
+  document.querySelectorAll('.imdb-badge[data-surface="modal"]').forEach((b) => {
+    const r = modalRoot(b) || b.closest("main");
+    if (!r || !live.has(r)) b.remove();
+  });
+}
 
 // ---------- badges op de kaartjes in de rijen ----------
 // Netflix wisselt regelmatig de DOM-opbouw: soms zit de poster in de link,
@@ -511,127 +753,90 @@ function cardHostForLink(a, id) {
     const ids = new Set(links.map((link) => idOf(link.getAttribute("href"))).filter(Boolean));
     return ids.size === 1 && ids.has(id);
   };
-
-  // Netflix' card root. This keeps artwork, title links and hover controls together.
   const titleCard = a.closest(".title-card");
-  if (titleCard && titleCard.getBoundingClientRect().width <= 620 &&
-      titleCard.getBoundingClientRect().width >= 64 &&
-      titleCard.querySelector(POSTER_SELECTOR) && hasOnlyThisTitle(titleCard)) {
-    return titleCard;
+  if (titleCard) {
+    const w = titleCard.getBoundingClientRect().width;
+    if (w <= 620 && w >= 64 && titleCard.querySelector(POSTER_SELECTOR) && hasOnlyThisTitle(titleCard)) return titleCard;
   }
-
-  // DOM variants without .title-card: use the nearest small container that holds
-  // both a poster and this one Netflix ID. Never climb up to an entire row.
   for (let node = a.parentElement, depth = 0; node && depth < 6; node = node.parentElement, depth++) {
     const r = node.getBoundingClientRect();
     if (r.width > 620) break;
     if (r.width < 64 || r.height < r.width * 0.38 || r.height > r.width * 2.2 || !inView(r)) continue;
     if (node.tagName === "A") continue;
-    const hasPoster = node.matches(POSTER_SELECTOR) || !!node.querySelector(POSTER_SELECTOR);
-    if (hasPoster && hasOnlyThisTitle(node)) return node;
+    if ((node.matches(POSTER_SELECTOR) || node.querySelector(POSTER_SELECTOR)) && hasOnlyThisTitle(node)) return node;
   }
   return null;
 }
 
+function cardTitleOf(a, host) {
+  const out = [];
+  const add = (v) => { const t = cleanTitle(v); if (t && !out.includes(t)) out.push(t); };
+  add(a.getAttribute("aria-label"));
+  const fb = host.querySelector(".fallback-text, [class*='fallback-text']");
+  if (fb) add(fb.textContent);
+  const img = host.querySelector("img[alt]");
+  if (img) add(img.getAttribute("alt"));
+  return out;
+}
+
+function renderCard(host, id, a) {
+  if (host.dataset.imdbHost && host.dataset.imdbHost !== id) {
+    host.querySelectorAll(':scope > .imdb-badge[data-surface="card"]').forEach((b) => b.remove());
+    delete host.dataset.imdbPending;
+    delete host.dataset.imdbNo;
+  }
+  if (host.dataset.imdbHost === id && (
+    host.querySelector(':scope > .imdb-badge[data-surface="card"]') ||
+    host.dataset.imdbPending === id || host.dataset.imdbNo === id)) return;
+
+  host.dataset.imdbHost = id;
+  host.dataset.imdbPending = id;
+  delete host.dataset.imdbNo;
+  if (getComputedStyle(host).position === "static") host.style.position = "relative";
+
+  const key = "c|" + id;
+  const lb = loadingBadge(null, "imdb-card-badge");
+  lb.dataset.surface = "card"; lb.dataset.key = key;
+  host.appendChild(lb);
+  lookup({ key, id, titles: [], fallbackTitles: cardTitleOf(a, host) }).then((res) => {
+    if (host.dataset.imdbHost !== id) return;
+    delete host.dataset.imdbPending;
+    saveNetflixDiagnostic(id, res);
+    host.querySelectorAll(':scope > .imdb-badge[data-surface="card"]').forEach((b) => b.remove());
+    const badge = build(res, null, "imdb-card-badge") || buildDebugBadge(res, null, "imdb-card-badge");
+    if (!badge) { host.dataset.imdbNo = id; return; }
+    badge.dataset.surface = "card";
+    badge.dataset.key = key;
+    host.appendChild(badge);
+  }).catch(() => {
+    if (host.dataset.imdbHost === id) {
+      delete host.dataset.imdbPending; host.dataset.imdbNo = id;
+      host.querySelectorAll(':scope > .imdb-badge[data-surface="card"]').forEach((b) => b.remove());
+    }
+  });
+}
+
 function scanCards() {
-  if (!S.showCards || currentId()) return;
+  if (!S.showCards) return;
   document.querySelectorAll('a[href*="/watch/"], a[href*="/title/"]').forEach((a) => {
-    if (a.closest("[data-imdb-hover]")) return;
     const id = idOf(a.getAttribute("href"));
     if (!id) return;
+    if (a.closest(EPISODE_SEL)) return;                       // geen badge op losse afleveringen
+    if (a.closest(MODAL_SEL) && !a.closest(CARD_SEL)) return; // knoppen/posters van de modal zelf
+    if (!inView(a.getBoundingClientRect())) return;           // spaart OMDb-quota
 
     const host = cardHostForLink(a, id);
     if (!host) return;
-    const r = host.getBoundingClientRect();
-    host.classList.toggle("imdb-host-mini", r.width < 140);
-    if (host.dataset.imdbId === id && host.querySelector(":scope > .imdb-badge")) return;
-    render(host, id);
+    if (host.matches(MODAL_SEL) || host.querySelector(MODAL_SEL)) return;
+    const outer = host.parentElement && host.parentElement.closest("[data-imdb-host]");
+    if (outer && outer !== host) return;                      // nooit een badge in een badge-kaart
+    if (host.querySelector("[data-imdb-host]")) return;
+    host.classList.toggle("imdb-host-mini", host.getBoundingClientRect().width < 140);
+    renderCard(host, id, a);
   });
 }
 
-// ---------- badge op Netflix' hover-voorbeeldkaart (Play / + / duim) ----------
-const PLAY = /^(play|afspelen|speel af|resume|hervat|doorgaan|continue)/i;
-function scanHover() {
-  if (!S.showHover || currentId()) return;
-  document.querySelectorAll('[data-uia*="play"], button[aria-label]').forEach((el) => {
-    const label = el.getAttribute("aria-label") || "";
-    if (!(PLAY.test(label) || /play-button/.test(el.getAttribute("data-uia") || ""))) return;
-    if (!el.offsetParent) return;
-
-    // Alleen de echte Netflix-preview-modal gebruiken. Geen willekeurige ancestors
-    // of rijcontainers: die veroorzaakten badges op vreemde en dubbele plekken.
-    const modal = el.closest(".focus-trap-wrapper.previewModal--wrapper.mini-modal, .previewModal--wrapper.mini-modal");
-    if (!modal) return;
-    const links = [...modal.querySelectorAll('a[href*="/watch/"], a[href*="/title/"]')];
-    const ids = new Set(links.map(link => idOf(link.getAttribute("href"))).filter(Boolean));
-    if (ids.size !== 1) return;
-    const id = [...ids][0];
-
-    const host = modal.querySelector(".previewModal--info") ||
-      modal.querySelector('[data-uia="metadata"]') || modal;
-    if (!host || host.tagName === "A") return;
-    if (host.dataset.imdbId === id && (
-      host.querySelector(":scope > .imdb-badge") ||
-      host.dataset.imdbPending === id ||
-      host.dataset.imdbNoRating === id
-    )) return;
-
-    host.dataset.imdbHover = "1";
-    render(host, id, "imdb-hover");
-  });
-}
-
-// ---------- grote badge op een echte titelpagina ----------
-function currentId() {
-  // Geen jbv-queryparameter gebruiken: die kan op browse-/previewpagina's wisselen.
-  const match = location.pathname.match(/^\/(?:[a-z]{2}(?:-[A-Z]{2})\/)?title\/(\d{5,})(?:\/|$)/i);
-  return match ? match[1] : null;
-}
-function place(badge) {
-  const area = (el) => {
-    const r = el.getBoundingClientRect();
-    return r.bottom > 0 && r.top < innerHeight ? r.width * r.height : 0;
-  };
-  const play = [...document.querySelectorAll('[data-uia="play-button"], button, a[href*="/watch/"]')]
-    .filter((el) => el.offsetParent && !el.querySelector("img") && (el.textContent || "").length < 30 &&
-      /play|next episode|afspelen|volgende/i.test(el.textContent || "") && area(el) > 0)
-    .sort((a, b) => area(b) - area(a))[0];
-
-  if (play && play.parentElement) {
-    badge.classList.add("imdb-inline");
-    play.parentElement.appendChild(badge);
-    return true;
-  }
-  const heading = document.querySelector('h1, [data-uia="video-title"]');
-  if (heading && heading.isConnected) {
-    badge.classList.add("imdb-main-inline");
-    heading.insertAdjacentElement("afterend", badge);
-    return true;
-  }
-  return false;
-}
-const BIGGER = { s: "m", m: "l", l: "xl" };
-let pendingMain = null;
-async function updateMain() {
-  const id = currentId();
-  const existing = document.querySelector(".imdb-main");
-  if (!S.showMain || !id) { existing?.remove(); return; }
-  if (existing && existing.dataset.id === id && existing.isConnected) return;
-  existing?.remove();
-  if (pendingMain === id) return;
-  pendingMain = id;
-  let res = null;
-  try { res = await lookup(id); } catch {}
-  finally { if (pendingMain === id) pendingMain = null; }
-  if (!S.showMain || currentId() !== id) return;
-  saveNetflixDiagnostic(id, res);
-  const badge = build(res, BIGGER[S.size] || "l") || buildDebugBadge(res, BIGGER[S.size] || "l");
-  if (!badge) return;
-  badge.classList.add("imdb-main");
-  badge.dataset.id = id;
-  if (!place(badge)) badge.remove();
-}
-
+// ---------- afspelen: badge kleiner of weg ----------
 function syncPlayback() {
   const fullscreen = !!document.fullscreenElement;
   const playing = [...document.querySelectorAll("video")].some((v) => {
@@ -644,7 +849,12 @@ function syncPlayback() {
 }
 document.addEventListener("play", syncPlayback, true);
 document.addEventListener("pause", syncPlayback, true);
-function scan() { scanHover(); scanCards(); updateMain(); syncPlayback(); }
+
+function scan() {
+  try { updateModals(); } catch (e) { console.debug("[imdb] modals", e); }
+  try { scanCards(); } catch (e) { console.debug("[imdb] cards", e); }
+  syncPlayback();
+}
 let scanTimer;
 function queueScan() {
   clearTimeout(scanTimer);

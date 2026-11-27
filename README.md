@@ -1,10 +1,28 @@
 # IMDb ratings in Netflix with trailers
 
-<sub>Current version: **0.6.10**</sub>
+<sub>Current version: **0.8.0**</sub>
 
 A small Chrome extension that puts IMDb ratings straight onto Netflix. It also shows Rotten Tomatoes and Metascore, so you can get a quick idea of a film or series without opening three extra tabs.
 
 I made this for my own Netflix browsing and kept adding the bits I wanted to see.
+
+## Supported services
+
+| Service | Status |
+| --- | --- |
+| **Netflix** | ✅ Working and tested (title page, hover cards, rows, More Like This) |
+| Disney+ | 🧪 Experimental, built without testing on a live account |
+| Videoland | 🧪 Experimental, built without testing on a live account |
+| NPO Plus / NPO Start | 🧪 Experimental, built without testing on a live account |
+| Prime Video | 🧪 Experimental (Amazon already shows IMDb data on many pages) |
+| Max / HBO Max, Apple TV, SkyShowtime, Paramount+, Hulu | 🧪 Experimental, untested |
+| YouTube | ❌ Not supported: most videos are not films or series, so there is nothing reliable to match |
+
+**Only Netflix is confirmed to work 100%.** The other services use a generic engine (`generic.js` + `sites.js`) that reads
+the title from the page title, structured data, headings and poster text, and the type/year from the page when it is shown.
+Their selectors are educated guesses based on each service's URL structure, so expect to need small fixes per service.
+On poster rows without a year the extension is deliberately strict: it shows a score only when the match is unambiguous, otherwise nothing.
+Turn on **debug** in the settings to see why a title was not matched, and add or adjust a service in `sites.js`.
 
 ## What it does
 
