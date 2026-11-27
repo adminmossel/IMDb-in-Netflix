@@ -112,7 +112,74 @@ async function netflixInfo(id) {
     if (value === id) return true;
     return new RegExp("/(?:title|watch)/" + id + "(?:[/?#]|$)").test(value);
   };
+
+  // Netflix embeds the canonical title payload in netflix.reactContext.
+  // This is more reliable than depending on JSON-LD, which is not present
+  // in every server-rendered title page.
+  const reactContextInfo = (html) => {
+    const scripts = html.match(/<script\b[^>]*>[\s\S]*?<\/script>/gi) || [];
+    for (const script of scripts) {
+      const match = script.match(/netflix\.reactContext\s*=\s*(\{[\s\S]*?\});\s*<\/script>/i);
+      if (!match) continue;
+      try {
+        const source = match[1].replace(/\\x([0-9a-f]{2})/gi, (_all, hex) => "\\u00" + hex);
+        const context = JSON.parse(source);
+        const nm = context?.models?.nmTitleGQL?.data;
+        const meta = nm?.metaData || {};
+        const exactMetaId = String(meta.videoId || meta.topLevelVideoId || "");
+        const nmTitle = cleanTitle(nm?.copy?.title);
+        if (exactMetaId === id && nmTitle) {
+          let graphVideo = null;
+          const walk = (node) => {
+            if (!node || graphVideo) return;
+            if (Array.isArray(node)) { node.forEach(walk); return; }
+            if (typeof node !== "object") return;
+            if (String(node.videoId || "") === id && typeof node.title === "string" &&
+                /^(Movie|Show|TVSeries)$/i.test(String(node.__typename || node.type || ""))) {
+              graphVideo = node;
+              return;
+            }
+            Object.values(node).forEach(walk);
+          };
+          walk(context?.models?.graphqlClcs?.data);
+          const rawType = String(graphVideo?.__typename || meta.type || "").toLowerCase();
+          const mediaType = rawType === "movie" ? "movie"
+            : rawType === "show" || rawType === "tvseries" ? "series" : null;
+          const year = parseInt(String(graphVideo?.latestYear || nm?.latestYear || meta.latestYear || "").match(/\d{4}/)?.[0], 10) || null;
+          return { title: nmTitle, aliases: [], year, mediaType };
+        }
+
+        // Some Netflix page variants expose the title only in graphqlClcs.
+        let graphVideo = null;
+        const walk = (node) => {
+          if (!node || graphVideo) return;
+          if (Array.isArray(node)) { node.forEach(walk); return; }
+          if (typeof node !== "object") return;
+          if (String(node.videoId || "") === id && typeof node.title === "string" &&
+              /^(Movie|Show|TVSeries)$/i.test(String(node.__typename || node.type || ""))) {
+            graphVideo = node;
+            return;
+          }
+          Object.values(node).forEach(walk);
+        };
+        walk(context?.models?.graphqlClcs?.data);
+        if (graphVideo) {
+          const rawType = String(graphVideo.__typename || graphVideo.type || "").toLowerCase();
+          return {
+            title: cleanTitle(graphVideo.title),
+            aliases: [],
+            year: parseInt(String(graphVideo.latestYear || "").match(/\d{4}/)?.[0], 10) || null,
+            mediaType: rawType === "movie" ? "movie" : "series"
+          };
+        }
+      } catch {}
+    }
+    return null;
+  };
+
   const pageInfo = (html) => {
+    const embedded = reactContextInfo(html);
+    if (embedded) return embedded;
     const doc = new DOMParser().parseFromString(html, "text/html");
     const typed = [];
     const visit = (node) => {
@@ -200,7 +267,7 @@ const idCache = new Map();
 function infoFromId(id) {
   if (!idCache.has(id)) {
     idCache.set(id, (async () => {
-      const k = "n13:" + id;
+      const k = "n14:" + id;
       try {
         const st = (await chrome.storage.local.get([k]))[k];
         if (st && Date.now() - st.t < 30 * 864e5) return st.v;
