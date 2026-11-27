@@ -2,7 +2,7 @@
 // eigen backend die de officiële IMDb API (AWS Data Exchange) gebruikt.
 const TTL = 7 * 24 * 60 * 60 * 1000;      // gevonden ratings: 7 dagen
 const NEG_TTL = 3 * 60 * 60 * 1000;      // "niet gevonden": 3 uur
-const PREFIX = "r10:"                     // nieuwe cache-versie (oude, foute resultaten vervallen)
+const PREFIX = "r11:"                     // nieuwe cache-versie (oude, foute resultaten vervallen)
 
 // ---------- titel-vergelijking: voorkomt dat een verkeerde film wordt getoond ----------
 const norm = (s) => (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -84,20 +84,26 @@ function map(d) {
 
 // IMDb-suggesties kennen ook alternatieve (Engelse) titels van niet-Engelse producties,
 // bv. Netflix' "The Golden Hour" = de Nederlandse serie "Het Gouden Uur".
-async function suggest(title) {
+async function suggest(title, dbg) {
   const q = norm(title).replace(/ /g, "_");
   if (!q) return [];
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 4500);
   try {
     const r = await fetch("https://v2.sg.media-imdb.com/suggestion/" + q[0] + "/" + q + ".json", { signal: controller.signal });
-    if (!r.ok) return [];
+    if (!r.ok) {
+      if (dbg) dbg.steps.push("IMDb-suggesties HTTP " + r.status);
+      return [];
+    }
     const d = await r.json();
     return (d.d || [])
       .filter((x) => x.id && x.id.startsWith("tt") &&
         /^(movie|tvSeries|tvMiniSeries|tvMovie|tvSpecial|tvShort|video|short)$/.test(x.qid || ""))
       .map((x) => ({ id: x.id, title: x.l, year: x.y || null, qid: x.qid || null }));
-  } catch { return []; }
+  } catch (error) {
+    if (dbg) dbg.steps.push("IMDb-suggesties fout: " + (error && error.message || "onbekend"));
+    return [];
+  }
   finally { clearTimeout(timeout); }
 }
 
@@ -123,7 +129,7 @@ async function fetchRating(title, key, year, mediaType) {
   };
 
   const [suggestions, direct] = await Promise.all([
-    suggest(title),
+    suggest(title, dbg),
     omdb({ t: title, ...(yr ? { y: yr } : {}), plot: "short" }, key)
       .catch((error) => {
         if (["bad-key", "limit"].includes(error && error.message)) throw error;
