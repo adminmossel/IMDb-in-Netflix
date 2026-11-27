@@ -14,7 +14,12 @@ chrome.storage.onChanged.addListener((c, area) => {
 function resetAll() {
   hideCard();
   document.querySelectorAll(".imdb-badge").forEach((b) => b.remove());
-  document.querySelectorAll("[data-imdb-id], [data-imdb-fail]").forEach((e) => { delete e.dataset.imdbId; delete e.dataset.imdbFail; });
+  document.querySelectorAll("[data-imdb-id], [data-imdb-fail], [data-imdb-pending], [data-imdb-no-rating]").forEach((e) => {
+    delete e.dataset.imdbId;
+    delete e.dataset.imdbFail;
+    delete e.dataset.imdbPending;
+    delete e.dataset.imdbNoRating;
+  });
   resById.clear();
   idCache.clear();
   pendingById.clear();
@@ -216,6 +221,7 @@ async function lookup1(id) {
     .map(cleanTitle)
     .filter((title, index, all) => title && all.findIndex(x => x.toLowerCase() === title.toLowerCase()) === index);
 
+  const failedCandidates = [];
   for (const title of candidates) {
     const result = await ask(title, info.year, info.mediaType);
     if (result.error) return result;
@@ -223,10 +229,22 @@ async function lookup1(id) {
     if (result.verified === true && Number.isFinite(rating) && rating >= 0 && rating <= 10 && /^tt\d{5,}$/.test(result.id || "")) {
       return result;
     }
+    const detail = result && result.dbg;
+    failedCandidates.push("kandidaat: " + title);
+    if (detail && Array.isArray(detail.steps)) failedCandidates.push(...detail.steps);
+    else failedCandidates.push("geen score of bevestigde IMDb-ID ontvangen");
   }
   return {
     rating: null,
-    dbg: { q: info.title, y: info.year, steps: ["Geen unieke, bevestigde IMDb-match", "type:" + (info.mediaType || "onbekend"), "Netflix-ID:" + id] }
+    dbg: {
+      q: info.title,
+      y: info.year,
+      steps: [
+        "Netflix-ID: " + id,
+        "type: " + (info.mediaType || "onbekend"),
+        ...failedCandidates
+      ]
+    }
   };
 }
 
@@ -310,20 +328,28 @@ function buildDebugBadge(res, size, extra) {
 // Geen laad-balkjes of "geen score"-labels over de hele Netflix-pagina.
 function render(host, id, extra) {
   if (!host || !id) return;
-  if (host.dataset.imdbId === id && (host.querySelector(":scope > .imdb-badge") || host.dataset.imdbNoRating === id)) return;
+  if (host.dataset.imdbId === id && (
+    host.querySelector(":scope > .imdb-badge") ||
+    host.dataset.imdbPending === id ||
+    host.dataset.imdbNoRating === id
+  )) return;
+
   host.querySelector(":scope > .imdb-badge")?.remove();
   host.dataset.imdbId = id;
+  host.dataset.imdbPending = id;
   delete host.dataset.imdbNoRating;
   if (getComputedStyle(host).position === "static") host.style.position = "relative";
 
   lookup(id).then((res) => {
-    if (host.dataset.imdbId !== id) return;
+    if (host.dataset.imdbId !== id || host.dataset.imdbPending !== id) return;
+    delete host.dataset.imdbPending;
     host.querySelector(":scope > .imdb-badge")?.remove();
     const badge = build(res, null, extra) || buildDebugBadge(res, null, extra);
     if (badge) host.appendChild(badge);
     else host.dataset.imdbNoRating = id;
   }).catch(() => {
-    if (host.dataset.imdbId === id) {
+    if (host.dataset.imdbId === id && host.dataset.imdbPending === id) {
+      delete host.dataset.imdbPending;
       host.querySelector(":scope > .imdb-badge")?.remove();
       host.dataset.imdbNoRating = id;
     }
@@ -340,7 +366,7 @@ function cardHostForLink(a, id) {
   let node = a;
   for (let depth = 0; node && depth < 8; depth++, node = node.parentElement) {
     const r = node.getBoundingClientRect();
-    if (r.width < 64 || r.width > 620 || r.height < r.width * 0.38 || !inView(r)) continue;
+    if (r.width < 64 || r.width > 620 || r.height < r.width * 0.38 || r.height > r.width * 2.2 || !inView(r)) continue;
     // Gebruik altijd een div/container als host, nooit de titel-link zelf:
     // de badge is ook een link en mag dus geen geneste <a> worden.
     if (node.tagName === "A") continue;
@@ -356,7 +382,7 @@ function cardHostForLink(a, id) {
 }
 
 function scanCards() {
-  if (!S.showCards) return;
+  if (!S.showCards || currentId()) return;
   document.querySelectorAll('a[href*="/watch/"], a[href*="/title/"]').forEach((a) => {
     if (a.closest("[data-imdb-hover]")) return;
     const id = idOf(a.getAttribute("href"));
@@ -374,7 +400,7 @@ function scanCards() {
 // ---------- badge op Netflix' hover-voorbeeldkaart (Play / + / duim) ----------
 const PLAY = /^(play|afspelen|speel af|resume|hervat|doorgaan|continue)/i;
 function scanHover() {
-  if (!S.showHover) return;
+  if (!S.showHover || currentId()) return;
   document.querySelectorAll('[data-uia*="play"], button[aria-label], a[aria-label]').forEach((el) => {
     const label = el.getAttribute("aria-label") || "";
     if (!(PLAY.test(label) || /play-button/.test(el.getAttribute("data-uia") || ""))) return;
