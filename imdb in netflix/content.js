@@ -109,16 +109,14 @@ async function netflixInfo(id) {
       if (isSeries || isMovie) {
         const refs = [node.url, node["@id"], node.mainEntityOfPage]
           .flatMap(v => typeof v === "object" && v ? [v.url, v["@id"]] : [v]);
-        const exact = refs.some(refersToId);
-        if (exact) {
-          const name = cleanTitle(node.name || node.headline);
-          if (name) {
-            const date = String(node.datePublished || node.dateCreated || node.startDate || node.copyrightYear || "").match(/\d{4}/)?.[0] || null;
-            const aliases = [node.alternateName, node.alternateHeadline]
-              .flatMap(x => Array.isArray(x) ? x : [x])
-              .map(cleanTitle).filter(Boolean);
-            typed.push({ title: name, year: date ? +date : null, mediaType: isSeries ? "series" : "movie", aliases });
-          }
+        const exactRef = refs.some(refersToId);
+        const name = cleanTitle(node.name || node.headline);
+        if (name) {
+          const date = String(node.datePublished || node.dateCreated || node.startDate || node.copyrightYear || "").match(/\d{4}/)?.[0] || null;
+          const aliases = [node.alternateName, node.alternateHeadline]
+            .flatMap(x => Array.isArray(x) ? x : [x])
+            .map(cleanTitle).filter(Boolean);
+          typed.push({ title: name, year: date ? +date : null, mediaType: isSeries ? "series" : "movie", aliases, exactRef });
         }
       }
       for (const [key, value] of Object.entries(node)) {
@@ -129,18 +127,41 @@ async function netflixInfo(id) {
       try { visit(JSON.parse(script.textContent)); } catch {}
     }
 
-    const exact = typed.find(x => x.year) || typed[0] || null;
-    const ogTitle = cleanTitle(doc.querySelector('meta[property="og:title"]')?.content);
-    const metaTitle = cleanTitle(doc.querySelector('meta[name="title"]')?.content);
-    const title = exact?.title || ogTitle || metaTitle;
+    // De response-URL is hierboven al gecontroleerd tegen de aangevraagde Netflix-ID.
+    // Paginametadata (Open Graph / title / h1) hoort daardoor bij precies die titel,
+    // ook wanneer Netflix het JSON-LD-object geen expliciete URL meegeeft.
+    const pageTitles = [
+      doc.querySelector('meta[property="og:title"]')?.content,
+      doc.querySelector('meta[name="title"]')?.content,
+      doc.querySelector("h1")?.textContent,
+      doc.title
+    ].map(cleanTitle).filter(Boolean);
+    const normalizeTitle = (value) => cleanTitle(value)?.toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").trim() || "";
+    const pageTitle = pageTitles[0] || null;
+    const pageTitleKeys = new Set(pageTitles.map(normalizeTitle).filter(Boolean));
+
+    const exactTyped = typed.filter(x => x.exactRef);
+    const matchingTyped = typed.filter(x => pageTitleKeys.has(normalizeTitle(x.title)));
+    const chosen = exactTyped.length === 1 ? exactTyped[0]
+      : exactTyped.length > 1 ? null
+      : matchingTyped.length === 1 ? matchingTyped[0]
+      : matchingTyped.length > 1 ? null
+      : typed.length === 1 ? typed[0] : null;
+
     const ogType = doc.querySelector('meta[property="og:type"]')?.content || "";
-    const mediaType = exact?.mediaType || (/tv|series|show/i.test(ogType) ? "series" : /movie|film/i.test(ogType) ? "movie" : null);
+    const rawType = (html.match(/"(?:titleType|videoType)"\s*:\s*"(movie|series|tvSeries|tvMiniSeries)"/i) || [])[1];
+    const fallbackType = /tv|series|show/i.test(ogType) || /series/i.test(rawType || "") ? "series"
+      : /movie|film/i.test(ogType) || /movie/i.test(rawType || "") ? "movie" : null;
+    const releaseYear = parseInt((html.match(/"releaseYear"\s*:\s*(\d{4})/) || [])[1], 10) || null;
+    const title = chosen?.title || pageTitle;
     if (!title) return null;
     return {
       title,
-      aliases: exact?.aliases || [],
-      year: exact?.year || null,
-      mediaType
+      aliases: chosen?.aliases || [],
+      year: chosen?.year || releaseYear,
+      mediaType: chosen?.mediaType || fallbackType
     };
   };
 
@@ -157,7 +178,7 @@ const idCache = new Map();
 function infoFromId(id) {
   if (!idCache.has(id)) {
     idCache.set(id, (async () => {
-      const k = "n8:" + id;
+      const k = "n9:" + id;
       try {
         const st = (await chrome.storage.local.get([k]))[k];
         if (st && Date.now() - st.t < 30 * 864e5) return st.v;
