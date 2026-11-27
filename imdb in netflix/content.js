@@ -365,22 +365,27 @@ const inView = (r) => r.right > -300 && r.left < innerWidth + 300 && r.bottom > 
 // soms staat de afbeelding als buur-element in dezelfde kaartcontainer.
 const POSTER_SELECTOR = 'img, video, [data-uia*="boxart"], [class*="boxart"], [style*="background-image"]';
 function cardHostForLink(a, id) {
+  let best = null;
   let node = a;
   for (let depth = 0; node && depth < 8; depth++, node = node.parentElement) {
+    // De rijcontainer is breder dan een kaart; daarboven nooit verder zoeken.
     const r = node.getBoundingClientRect();
-    if (r.width < 64 || r.width > 620 || r.height < r.width * 0.38 || r.height > r.width * 2.2 || !inView(r)) continue;
-    // Gebruik altijd een div/container als host, nooit de titel-link zelf:
-    // de badge is ook een link en mag dus geen geneste <a> worden.
+    if (r.width > 620) break;
+    if (r.width < 64 || r.height < r.width * 0.38 || r.height > r.width * 2.2 || !inView(r)) continue;
+    // Gebruik altijd een gewone container, nooit de titel-link zelf.
     if (node.tagName === "A") continue;
     const hasPoster = node.matches(POSTER_SELECTOR) || !!node.querySelector(POSTER_SELECTOR);
     if (!hasPoster) continue;
 
     const links = [...node.querySelectorAll('a[href*="/watch/"], a[href*="/title/"]')];
     const ids = new Set(links.map((link) => idOf(link.getAttribute("href"))).filter(Boolean));
-    // Een container met meerdere verschillende titels is een rij, geen individuele kaart.
-    if (ids.size === 1 && ids.has(id)) return node;
+    // Zodra de container meerdere titels bevat, zijn we buiten de individuele kaart.
+    if (ids.size > 1) break;
+    // Bewaar de grootste geldige individuele kaartcontainer, zodat poster- en
+    // titel-links van dezelfde kaart naar exact dezelfde host leiden.
+    if (ids.size === 1 && ids.has(id)) best = node;
   }
-  return null;
+  return best;
 }
 
 function scanCards() {
