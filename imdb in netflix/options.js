@@ -65,7 +65,37 @@ function setLanguage(lang) {
  $("eye").textContent = tr($("eye").dataset.visible === "true" ? "hide" : "show");
  $("dq").setAttribute("aria-label", language === "nl" ? "Titel" : "Title");
  $("dy").setAttribute("aria-label", language === "nl" ? "Jaar" : "Year");
+ $("netflixDiagHeading").textContent = language === "nl" ? "Laatste Netflix-titelcontrole" : "Latest Netflix title check";
+ $("netflixDiagHelp").textContent = language === "nl"
+   ? "Open eerst op Netflix de informatiepagina van één film of serie. Open daarna deze instellingen en vernieuw de controle hieronder."
+   : "First open one film or series information page on Netflix. Then open these settings and refresh the check below.";
+ $("refreshNetflixDiag").textContent = language === "nl" ? "Controle vernieuwen" : "Refresh check";
 }
+async function refreshNetflixDiagnostic() {
+ try {
+  const snapshot = (await chrome.storage.local.get(["lastNetflixDebug"])).lastNetflixDebug;
+  if (!snapshot) {
+   $("lastNetflixDiag").textContent = language === "nl"
+     ? "Nog geen Netflix-controle opgeslagen. Open een titelpagina op Netflix en vernieuw deze controle."
+     : "No Netflix check saved yet. Open a title page on Netflix and refresh this check.";
+   return;
+  }
+  const lines = [
+   "Tijd: " + new Date(snapshot.time).toLocaleString(),
+   "Netflix-ID: " + (snapshot.netflixId || "onbekend"),
+   "Netflix-titel: " + (snapshot.title || "niet uitgelezen"),
+   "Jaar: " + (snapshot.year || "onbekend"),
+   "Fout: " + (snapshot.error || "geen"),
+   ...(snapshot.steps || [])
+  ];
+  $("lastNetflixDiag").textContent = lines.join("\\n");
+ } catch (error) {
+  $("lastNetflixDiag").textContent = "Diagnose niet beschikbaar: " + (error && error.message || "onbekende fout");
+ }
+}
+$("refreshNetflixDiag").addEventListener("click", refreshNetflixDiagnostic);
+refreshNetflixDiagnostic();
+
 $("langEn").addEventListener("click", async () => { setLanguage("en"); await chrome.storage.sync.set({language:"en"}); });
 $("langNl").addEventListener("click", async () => { setLanguage("nl"); await chrome.storage.sync.set({language:"nl"}); });
 chrome.storage.sync.get(["language"]).then(d => setLanguage(d.language || "en"));
