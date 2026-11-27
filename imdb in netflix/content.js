@@ -117,9 +117,9 @@ async function netflixInfo(id) {
   };
 
   const lang = String(document.documentElement.lang || "en").toLowerCase().split("-")[0];
-  // Begin met de lokale titelpagina. Pas als die geen bruikbare metadata heeft,
-  // worden de generieke titel- en watch-routes geprobeerd.
-  const primaryHtml = await fetchPage("/" + lang + "/title/");
+  // Gebruik eerst de canonieke Netflix-route. In sommige taalinstellingen
+  // stuurt Netflix /en/title/{id} door naar /NotFound, terwijl /title/{id} wel werkt.
+  const primaryHtml = await fetchPage("/title/");
 
   const refersToId = (value) => {
     if (typeof value !== "string") return false;
@@ -131,66 +131,72 @@ async function netflixInfo(id) {
   // This is more reliable than depending on JSON-LD, which is not present
   // in every server-rendered title page.
   const reactContextInfo = (html) => {
-    const scripts = html.match(/<script\b[^>]*>[\s\S]*?<\/script>/gi) || [];
+    const scripts = html.match(/<script\\b[^>]*>[\\s\\S]*?<\\/script>/gi) || [];
     trace("scripts=" + scripts.length + "; reactContext-assignment=" +
-      (scripts.some(script => /netflix\.reactContext\s*=/.test(script)) ? "ja" : "nee"));
+      (scripts.some(script => /netflix\\.reactContext\\s*=/.test(script)) ? "ja" : "nee"));
     for (const script of scripts) {
-      const match = script.match(/netflix\.reactContext\s*=\s*(\{[\s\S]*?\});\s*<\/script>/i);
+      const match = script.match(/netflix\\.reactContext\\s*=\\s*(\\{[\\s\\S]*?\\});\\s*<\\/script>/i);
       if (!match) continue;
       trace("reactContext assignment-regex=match");
       try {
-        const source = match[1].replace(/\\x([0-9a-f]{2})/gi, (_all, hex) => "\\u00" + hex);
+        const source = match[1].replace(/\\\\x([0-9a-f]{2})/gi, (_all, hex) => "\\\\u00" + hex);
         const context = JSON.parse(source);
         trace("reactContext JSON=parse-ok");
-        const nm = context?.models?.nmTitleGQL?.data;
-        const meta = nm?.metaData || {};
-        const exactMetaId = String(meta.videoId || meta.topLevelVideoId || "");
-        const nmTitle = cleanTitle(nm?.copy?.title);
-        if (exactMetaId === id && nmTitle) {
-          trace("reactContext nmTitleGQL exact-ID=hit");
-          let graphVideo = null;
-          const walk = (node) => {
-            if (!node || graphVideo) return;
-            if (Array.isArray(node)) { node.forEach(walk); return; }
-            if (typeof node !== "object") return;
-            if (String(node.videoId || "") === id && typeof node.title === "string" &&
-                /^(Movie|Show|TVSeries)$/i.test(String(node.__typename || node.type || ""))) {
-              graphVideo = node;
-              return;
-            }
-            Object.values(node).forEach(walk);
-          };
-          walk(context?.models?.graphqlClcs?.data);
-          const rawType = String(graphVideo?.__typename || meta.type || "").toLowerCase();
-          const mediaType = rawType === "movie" ? "movie"
-            : rawType === "show" || rawType === "tvseries" ? "series" : null;
-          const year = parseInt(String(graphVideo?.latestYear || nm?.latestYear || meta.latestYear || "").match(/\d{4}/)?.[0], 10) || null;
-          return { title: nmTitle, aliases: [], year, mediaType };
-        }
 
-        // Some Netflix page variants expose the title only in graphqlClcs.
-        let graphVideo = null;
-        const walk = (node) => {
-          if (!node || graphVideo) return;
-          if (Array.isArray(node)) { node.forEach(walk); return; }
-          if (typeof node !== "object") return;
-          if (String(node.videoId || "") === id && typeof node.title === "string" &&
-              /^(Movie|Show|TVSeries)$/i.test(String(node.__typename || node.type || ""))) {
-            graphVideo = node;
+        const models = context && typeof context === "object" ? (context.models || {}) : {};
+        const modelKeys = Object.keys(models);
+        const nmData = models?.nmTitleGQL?.data;
+        trace("models=" + (modelKeys.slice(0, 12).join(",") || "geen") +
+          "; nmTitleGQL-data=" + (!!nmData) +
+          "; nm-copy-title=" + (!!cleanTitle(nmData?.copy?.title)) +
+          "; nm-metaData=" + (!!nmData?.metaData) +
+          "; graphqlClcs-data=" + (!!models?.graphqlClcs?.data));
+
+        // Netflix title data appears in two related shapes:
+        // nmTitleGQL: metaData.videoId + copy.title
+        // graphqlClcs: videoId + title, nested below query/componentTree nodes.
+        // Walk the complete models object and accept only records whose own ID
+        // (or paired metadata ID) exactly equals the requested Netflix ID.
+        const exactRecords = [];
+        const seen = new Set();
+        const walkExact = (node) => {
+          if (!node || typeof node !== "object") return;
+          if (Array.isArray(node)) {
+            node.forEach(walkExact);
             return;
           }
-          Object.values(node).forEach(walk);
+          if (seen.has(node)) return;
+          seen.add(node);
+
+          const meta = node.metaData && typeof node.metaData === "object" ? node.metaData : {};
+          const rawId = node.videoId ?? node.topLevelVideoId ?? meta.videoId ?? meta.topLevelVideoId;
+          const rawTitle = cleanTitle(node.title || node.copy?.title || node.copy?.name);
+          if (String(rawId ?? "") === id && rawTitle) {
+            const rawType = String(node.__typename || node.type || meta.type || "").toLowerCase();
+            const mediaType = rawType === "movie" ? "movie"
+              : rawType === "show" || rawType === "tvseries" || rawType === "tvminiseries" ? "series" : null;
+            const year = parseInt(String(node.latestYear || node.dateCreated || node.releaseYear ||
+              meta.latestYear || meta.releaseYear || "").match(/\\d{4}/)?.[0], 10) || null;
+            exactRecords.push({ title: rawTitle, year, mediaType });
+          }
+          Object.values(node).forEach(walkExact);
         };
-        walk(context?.models?.graphqlClcs?.data);
-        if (graphVideo) {
-          trace("reactContext graphqlClcs exact-ID=hit");
-          const rawType = String(graphVideo.__typename || graphVideo.type || "").toLowerCase();
-          return {
-            title: cleanTitle(graphVideo.title),
-            aliases: [],
-            year: parseInt(String(graphVideo.latestYear || "").match(/\d{4}/)?.[0], 10) || null,
-            mediaType: rawType === "movie" ? "movie" : "series"
-          };
+        walkExact(models);
+
+        const titleNames = [...new Set(exactRecords.map(record => record.title))];
+        trace("exact-ID-titelrecords=" + exactRecords.length +
+          "; unieke-titels=" + (titleNames.length ? titleNames.join(" | ") : "geen"));
+        if (titleNames.length === 1) {
+          const matching = exactRecords.filter(record => record.title === titleNames[0]);
+          matching.sort((left, right) =>
+            Number(!!right.year) + Number(!!right.mediaType) -
+            Number(!!left.year) - Number(!!left.mediaType));
+          const best = matching[0];
+          trace("exact Netflix-ID bevestigd in reactContext");
+          return { title: best.title, aliases: [], year: best.year, mediaType: best.mediaType };
+        }
+        if (titleNames.length > 1) {
+          trace("meerdere verschillende titels bij exact Netflix-ID; niet automatisch gekozen");
         }
       } catch {
         trace("reactContext JSON=parse-failed");
@@ -285,8 +291,8 @@ async function netflixInfo(id) {
     const result = pageInfo(primaryHtml);
     if (result) return result;
   }
-  // Fallbacks alleen ophalen wanneer de gelokaliseerde titelpagina geen titel opleverde.
-  for (const path of ["/title/", "/watch/"]) {
+  // Fallbacks alleen ophalen wanneer de canonieke titelpagina geen titel opleverde.
+  for (const path of ["/watch/", "/" + lang + "/title/"]) {
     const html = await fetchPage(path);
     if (!html) continue;
     const result = pageInfo(html);
