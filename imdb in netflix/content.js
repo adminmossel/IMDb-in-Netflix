@@ -131,15 +131,15 @@ async function netflixInfo(id) {
   // This is more reliable than depending on JSON-LD, which is not present
   // in every server-rendered title page.
   const reactContextInfo = (html) => {
-    const scripts = html.match(/<script\\b[^>]*>[\\s\\S]*?<\\/script>/gi) || [];
+    const scripts = html.match(/<script\b[^>]*>[\s\S]*?<\/script>/gi) || [];
     trace("scripts=" + scripts.length + "; reactContext-assignment=" +
-      (scripts.some(script => /netflix\\.reactContext\\s*=/.test(script)) ? "ja" : "nee"));
+      (scripts.some(script => /netflix\.reactContext\s*=/.test(script)) ? "ja" : "nee"));
     for (const script of scripts) {
-      const match = script.match(/netflix\\.reactContext\\s*=\\s*(\\{[\\s\\S]*?\\});\\s*<\\/script>/i);
+      const match = script.match(/netflix\.reactContext\s*=\s*(\{[\s\S]*?\});\s*<\/script>/i);
       if (!match) continue;
       trace("reactContext assignment-regex=match");
       try {
-        const source = match[1].replace(/\\\\x([0-9a-f]{2})/gi, (_all, hex) => "\\\\u00" + hex);
+        const source = match[1].replace(/\\x([0-9a-f]{2})/gi, (_all, hex) => "\\u00" + hex);
         const context = JSON.parse(source);
         trace("reactContext JSON=parse-ok");
 
@@ -176,7 +176,7 @@ async function netflixInfo(id) {
             const mediaType = rawType === "movie" ? "movie"
               : rawType === "show" || rawType === "tvseries" || rawType === "tvminiseries" ? "series" : null;
             const year = parseInt(String(node.latestYear || node.dateCreated || node.releaseYear ||
-              meta.latestYear || meta.releaseYear || "").match(/\\d{4}/)?.[0], 10) || null;
+              meta.latestYear || meta.releaseYear || "").match(/\d{4}/)?.[0], 10) || null;
             exactRecords.push({ title: rawTitle, year, mediaType });
           }
           Object.values(node).forEach(walkExact);
